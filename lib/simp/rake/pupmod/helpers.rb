@@ -152,11 +152,14 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
       result += changelogs[module_version].join
     end
 
+    # Create a custom fixtures file using the contents of the component's
+    # .fixtures.yaml file and modules pulled from a Puppetfile or modules
+    # residing in an existing directory
     def custom_fixtures_hook(opts = {
-      :short_name          => nil,
-      :puppetfile          => nil,
-      :modulepath          => nil,
-      :local_fixtures_mods => nil,
+      :short_name          => nil, # the name of the module (e.g., 'simplib')
+      :puppetfile          => nil, # optional URL of the Puppetfile to use
+      :modulepath          => nil, # optional directory containing modules
+      :local_fixtures_mods => nil, # Array of components from .fixtures.yaml
     })
       short_name          = opts[:short_name]
       puppetfile          = opts[:puppetfile]
@@ -165,6 +168,9 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
 
       fail('You must pass a short module name') unless short_name
 
+      # Initialize the hash for the fixtures to be generated with a
+      # symlink to the current dir for the module under test
+      local_fixtures_mods.delete(short_name)
       fixtures_hash = {
         'fixtures' => {
           'symlinks' => {
@@ -173,6 +179,7 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
         }
       }
 
+      # Gather the dependencies listed in the fixtures
       local_modules = {}
 
       if modulepath
@@ -180,13 +187,11 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
           fail("Could not find a module directory at #{modulepath}")
         end
 
-        # Grab all of the local modules and convert them into something
+        # Grab all of the local components and convert them into something
         # that can be turned into a Hash easily
-        local_modules = Hash[Dir.glob(File.join(modulepath, '*', 'metadata.json')).map do |m|
-          [File.basename(File.dirname(m)), File.absolute_path(File.dirname(m))]
+        local_modules = Hash[Dir.glob(File.join(modulepath, '*')).map do |m|
+          [File.basename(m), File.absolute_path(m)]
         end]
-
-        local_modules.delete(short_name)
       end
 
       if puppetfile
@@ -201,27 +206,27 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
           next if pupmod[:status] == :unknown
 
           if local_modules[pupmod[:name]]
+            # use component found in opts[:modulepath]
             unless local_fixtures_mods.empty?
               local_fixtures_mod = local_fixtures_mods.delete(pupmod[:name])
               next unless local_fixtures_mod
+              fixtures_hash['fixtures']['symlinks'][pupmod[:name]] = local_modules[pupmod[:name]]
             end
 
-            fixtures_hash['fixtures']['symlinks'][pupmod[:name]] = local_modules[pupmod[:name]]
           else
             fixtures_hash['fixtures']['repositories'] ||= {}
 
             unless local_fixtures_mods.empty?
+              next unless pupmod[:remote] && pupmod[:desired_ref]
+
               local_fixtures_mod = local_fixtures_mods.delete(pupmod[:name])
               next unless local_fixtures_mod
+
+              fixtures_hash['fixtures']['repositories'][pupmod[:name]] = {
+                'repo' => pupmod[:remote],
+                'ref'  => pupmod[:desired_ref]
+              }
             end
-
-            next unless pupmod[:remote] && pupmod[:desired_ref]
-            next if pupmod[:name] == short_name
-
-            fixtures_hash['fixtures']['repositories'][pupmod[:name]] = {
-              'repo' => pupmod[:remote],
-              'ref'  => pupmod[:desired_ref]
-            }
           end
         end
       elsif modulepath
@@ -229,9 +234,9 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
           unless local_fixtures_mods.empty?
             local_fixtures_mod = local_fixtures_mods.delete(pupmod)
             next unless local_fixtures_mod
-          end
 
-          fixtures_hash['fixtures']['symlinks'][pupmod] = path
+            fixtures_hash['fixtures']['symlinks'][pupmod] = path
+          end
         end
       end
 
@@ -248,9 +253,14 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
       end
 
       unless local_fixtures_mods.empty?
+        sources = []
+        sources << opts[:modulepath] if opts[:modulepath]
+        sources << opts[:puppetfile] if opts[:puppetfile]
+
         errmsg = [
           '===',
-          'The following modules in .fixtures.yml were not found in the Puppetfile:',
+          'The following modules in .fixtures.yml were not found in',
+          "#{sources.join(" or \n")}:",
           %{  * #{local_fixtures_mods.join("\n  * ")}},
           %{A temporary fixtures file has been written to #{custom_fixtures_path}},
           '==='
@@ -417,24 +427,31 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
     end
 
     # This hidden task provides a way to create and use a fixtures.yml file
-    # based on an externally specified Puppetfile
+    # based on an externally specified Puppetfile or directory of modules.
+    # By default, the resulting fixtures.yml will contain only those modules
+    # that are in the local .fixtures.yml.
     #
-    # The resulting fixtures.yml will contain only those modules that are
-    # in the local fixtures.yml but with the version specified in the
+    # Set the environment variable SIMP_RSPEC_PUPPETFILE to point to a remote
+    # Puppetfile. The dependencies pulled down will be those specified in the
     # Puppetfile.
-    #
-    # Downloaded repos that do not contain a metadata.json will be removed
-    #
-    # Set the environment variable SIMP_RSPEC_PUPPETFILE to point to a remote Puppetfile
-    #
-    # Set the environment variable SIMP_RSPEC_FIXTURES_OVERRIDE to 'yes' to
-    # ignore the local fixtures.yml file.
     #
     # Set the environment variable SIMP_RSPEC_MODULEPATH to symlink named
     # modules from the designated directory instead of downloading them.
     #
-    # If both SIMP_RSPEC_PUPPETFILE and SIMP_RSPEC_MODULEPATH are specified,
-    # the Puppetfile will win.
+    # Set the environment variable SIMP_RSPEC_FIXTURES_OVERRIDE to 'yes' to
+    # ignore the local .fixtures.yml file.  In this case all the modules
+    # available in the Puppetfile and/or modules directory will be listed
+    # in the generated fixtures.yml file. In addition any component that
+    # is not a Puppet module will be removed from the spec/fixtures/modules
+    # directory.
+    #
+    # CAVEATS:
+    # - If FIXTURES_YML is specified, this method will not generate a fixtures.yaml
+    #   file, regardless of whether SIMP_RSPEC_PUPPETFILE or SIMP_RSPEC_MODULEPATH
+    #   is set.
+    # - If both SIMP_RSPEC_PUPPETFILE and SIMP_RSPEC_MODULEPATH are specified,
+    #   the module path will win.
+    #
     task :custom_fixtures_hook do
       # Don't do anything if the user has already set a path to their fixtures
       unless ENV['FIXTURES_YML']
@@ -484,9 +501,12 @@ class Simp::Rake::Pupmod::Helpers < ::Rake::TaskLib
       end
     end
 
+
     Rake::Task['spec_prep'].enhance [:custom_fixtures_hook] do
       Dir.glob(File.join('spec','fixtures','modules','*')).each do |dir|
         if @custom_fixtures_hook_override_fixtures
+          # User has specified a custom fixtures.yaml and only wants Puppet
+          # modules in the fixtures
           FileUtils.remove_entry_secure(dir) unless File.exist?(File.join(dir, 'metadata.json'))
         end
       end
