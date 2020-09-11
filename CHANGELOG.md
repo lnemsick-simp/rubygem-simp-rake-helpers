@@ -1,3 +1,6 @@
+### 5.12.0 / 2020-09-11
+* Add deps:clean task to remove checked out dependency repositories
+
 ### 5.11.4 / 2020-08-03
 * Permit *.md files in `rake pkg:compare_latest_tag`
 

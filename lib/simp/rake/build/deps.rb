@@ -268,6 +268,39 @@ module Simp::Rake::Build
         end
 
         desc <<-EOM
+        Removes all checked-out dependency repos.
+
+        Uses the specified Puppetfile to identify the checked-out repos.
+
+        Arguments:
+          * :method  => The Puppetfile suffix to use (Default => 'tracking')
+          * :remove_cache => Whether to remove the R10K cache after removing the
+                             checked-out repos (Default => false)
+        EOM
+        task :clean, [:method,:remove_cache] do |t,args|
+
+          args.with_defaults(:method => 'tracking')
+          args.with_defaults(:remove_cache => false)
+
+          r10k_helper = R10KHelper.new("Puppetfile.#{args[:method]}")
+
+          r10k_issues = Parallel.map(
+            Array(r10k_helper.modules),
+              :in_processes => get_cpu_limit,
+              :progress => 'Dependency Removal'
+          ) do |mod|
+            Dir.chdir(@base_dir) do
+              FileUtils.rm_rf(mod[:path])
+            end
+          end
+
+          if args[:remove_cache].to_s == 'true'
+            cache_dir = File.join(@base_dir, '.r10k_cache')
+            FileUtils.rm_rf(cache_dir)
+          end
+        end
+
+        desc <<-EOM
         Get the status of the project Git repositories
 
         Arguments:
