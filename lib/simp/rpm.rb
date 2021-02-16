@@ -551,14 +551,28 @@ EOE
 
       gpg_key_size = nil
       gpg_key_id = nil
-      %x(gpg --homedir=#{keydir} --list-keys #{gpg_name} 2>&1).each_line do |line|
-        head,data = line.split(/\s+/)
-        if head == 'pub'
-          gpg_key_size,gpg_key_id = data.split('/')
+puts '>'*80
+puts `rpm -qa | grep gpg`
+puts "Executing 'gpg --with-colons --homedir=#{keydir} --list-keys #{gpg_name} 2>&1':"
+puts  %x(gpg --with-colons --homedir=#{keydir} --list-keys #{gpg_name} 2>&1)
+puts '<'*80
+      %x(gpg --with-colons --homedir=#{keydir} --list-keys #{gpg_name} 2>&1).each_line do |line|
+        # See https://github.com/CSNW/gnupg/blob/master/doc/DETAILS
+        # Index  Content
+        #   0    record type
+        #   2    key length
+        #   4    keyID
+        fields = line.split(':')
+        if fields[0] == 'pub'
+          gpg_key_size = fields[2]
+          gpg_key_id = fields[4]
           break
         end
       end
-
+puts '>'*80
+puts "gpg_key_size = #{gpg_key_size}"
+puts "gpg_key_id = #{gpg_key_id}"
+puts '<'*80
       if !gpg_key_size || !gpg_key_id
         fail("Error getting GPG Key metadata")
       end

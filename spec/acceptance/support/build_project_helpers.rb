@@ -65,7 +65,7 @@ module Simp::BeakerHelpers::SimpRakeHelpers::BuildProjectHelpers
   def dev_signing_key_id(host, proj_dir, opts = {})
     key_dir = distribution_dir(host, proj_dir, opts) + '/build_keys/dev'
     res = on(host, %(#{run_cmd} "gpg --list-keys --fingerprint --homedir='#{key_dir}' 'SIMP Development'"))
-    lines = res.stdout.lines.select { |x| x =~ %r{uid\s+* SIMP Development} }
+    lines = res.stdout.lines.select { |x| x =~ %r{uid\s+.* SIMP Development} }
     raise "No 'SIMP Development' GPG keys found under ''" if lines.empty?
     lines.first.strip.split(%r{\s+})[-4..-1].join.downcase
   end

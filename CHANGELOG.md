@@ -1,3 +1,8 @@
+### 5.12.0 / 2021-02-16
+- Disable brb-mangle-shebangs when building RPMs
+- Fix bug in GPG handling for GPG 2.1+ in which an existing
+  GPG key that was not cached internally was not detected.
+
 ### 5.11.6 / 2021-02-03
 * Fix GPG handling for GPG 2.1+
 
