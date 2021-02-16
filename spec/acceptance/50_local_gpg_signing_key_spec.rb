@@ -24,7 +24,7 @@ describe 'rake pkg:rpm with customized content' do
 
   before :all do
     copy_host_files_into_build_user_homedir(hosts)
-    hf_cmd(hosts, "bundle --local || bundle", nil, {run_in_parallel: true})
+    hf_cmd(hosts, 'bundle --local update || bundle update', nil, {run_in_parallel: true})
   end
 
   it 'can run the os-dependent Simp::LocalGpgSigningKey spec tests' do

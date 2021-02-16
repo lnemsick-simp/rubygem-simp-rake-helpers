@@ -109,6 +109,12 @@ describe 'rake pkg:rpm with customized content' do
       let!(:host){ _host }
 
       it 'can prep the package directories' do
+        # If the build environment of user executing this test has a newer
+        # version of bundler than provided by the published docker container,
+        # later portions of the test can have issues. So, make sure we
+        # have the latest version of bundler.
+        on hosts, %Q(#{run_cmd} "rvm all do gem install bundler")
+
         testpackages = [
          'testpackage_custom_scriptlet',
         ]

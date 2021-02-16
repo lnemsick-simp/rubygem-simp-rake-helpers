@@ -1,5 +1,6 @@
 require 'securerandom'
 require 'rake'
+require 'simp/command_utils'
 
 module Simp
   # Ensure that a valid GPG signing key exists in a local directory
@@ -52,6 +53,7 @@ module Simp
   #   ```
   class LocalGpgSigningKey
     include FileUtils
+    include Simp::CommandUtils
 
     # `SIMP::RPM.sign_keys` will look for a 'gengpgkey' file to
     #   non-interactively sign packages.
