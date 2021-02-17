@@ -168,25 +168,25 @@ module Simp
 
         clean_gpg_agent_directory
         write_genkey_parameter_file
-        write_gpg_agent_startup_script
 
         begin
           if gpg_version < Gem::Version.new('2.1')
+            write_gpg_agent_startup_script
+
             # Start the GPG agent.
             gpg_agent_output = %x(./#{@gpg_agent_script}).strip
 
             # Provide a local socket (needed by the `gpg` command when
             local_socket = File.join(Dir.pwd, 'S.gpg-agent')
 
-            # This condition was handled differently in previous logic.
+            # By the time we get here, we can be assured we will be starting a
+            # new agent, because the directory is cleaned out.
             #
-            #   a.) As the surrounding logic works now, it will _always_ be a new
-            #       agent by this point, because the directory is cleaned out
-            #   b.) The agent's information will be read from the env-file it
-            #        writes at startup
-            #   c.) The old command `gpg-agent --homedir=#{Dir.pwd} /get serverpid`
-            #       did not work on EL6 or EL7.
-            #
+            # Follow-on gpg actions will read the agent's information from
+            # the env-file the agent writes at startup.
+
+            # We're using the --sh option which will spew out the agent config
+            # when the agent starts. If it is empty, this is a problem.
             warn(empty_gpg_agent_message) if gpg_agent_output.empty?
 
             agent_info = gpg_agent_info
