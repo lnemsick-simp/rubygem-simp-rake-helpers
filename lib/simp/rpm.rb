@@ -609,7 +609,7 @@ puts '<'*80
           PTY.spawn(signcommand) do |read, write, pid|
             begin
               while !read.eof? do
-                read.expect(/pass\s?phrase:.*/) do |text|
+                read.expect(/pass\s?phrase:.*/, 10) do |text|
                   write.puts(gpgkey[:password])
                   write.flush
                 end
