@@ -1,0 +1,7 @@
+The following scripts with shebangs explicitly have their execute bit set
+in order to trigger the brp-mangle-shebangs script during an RPM build
+in EL8:
+
+* spec/classes/init_spec.rb
+* spec/files/mock_something.rb
+* utils/convert_v1_to_v2.rb

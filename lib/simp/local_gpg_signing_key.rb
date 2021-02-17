@@ -15,7 +15,7 @@ module Simp
   #     - New keys are generated using a temporary GPG agent with its own
   #       settings and socket.
   #
-  #   The local signing key's directory is structured as follows:
+  #   The local signing key's directory includes the following:
   #   EL7:
   #
   #   ```
@@ -24,7 +24,7 @@ module Simp
   #     +-- gengpgkey                     # --gen-key params file **
   #     +-- pubring.gpg
   #     +-- secring.gpg
-  #     +-- trustring.gpg
+  #     +-- trustdb.gpg
   #   ```
   #
   #   EL8:
@@ -32,15 +32,10 @@ module Simp
   #   #{key_name}/                        # key directory
   #     +-- RPM-GPG-KEY-SIMP-#{key_name}  # key file
   #     +-- gengpgkey                     # --gen-key params file **
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/openpgp-revocs.d
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/openpgp-revocs.d/282DCD22CB5E3317FCE4858F715A7264373D97AB.rev
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/private-keys-v1.d
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/private-keys-v1.d/E393EB8AF928526694E6D6D2B3BB864500E7B9DD.key
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/pubring.kbx
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/pubring.kbx~
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/run_gpg_agent
-  #     /tmp/spec_test__simp_local_gpg_signing_key20210216-12600-wdhxgn/dev/trustdb.gpg
-  #
+  #     +-- openpgp-revocs.d/<fingerprint id>.rev
+  #     +-- private-keys-v1.d/<user id>.key
+  #     +-- pubring.kbx
+  #     +-- trustdb.gpg
   #   ```
   #
   #   `**` = `SIMP::RPM.sign_keys` will use the values in the `gengpgkey` file
