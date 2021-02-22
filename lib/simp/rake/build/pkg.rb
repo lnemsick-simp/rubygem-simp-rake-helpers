@@ -21,6 +21,7 @@ module Simp::Rake::Build
       @rpm_verbose = ENV.fetch('SIMP_RPM_verbose','no') == 'yes'
       @rpm_build_metadata = 'last_rpm_build_metadata.yaml'
       @rpm_dependency_file = File.join(@base_dir, 'build', 'rpm', 'dependencies.yaml')
+      @build_keys_dir = ENV.fetch('SIMP_PKG_build_keys_dir', File.join(@base_dir, '.dev_gpgkeys'))
 
       define_tasks
     end
@@ -110,34 +111,40 @@ module Simp::Rake::Build
         desc <<-EOM
           Prepare a GPG signing key to sign build packages
 
-            * :key - the name of the directory under build/build_keys to
-                     prepare (defaults to 'dev')
+            * :key - the name of the build keys sub directory to prepare
+              (defaults to 'dev')
+
+              - The default build keys directory is
+                `#{@base_dir}/.dev_gpgkeys/build_keys`
+
 
           When :key is `dev`, a temporary signing key is created, if needed:
 
-            - A 14-day `dev` key will be created if none exists, including:
-              - The `<build_dir>/build_keys/dev/` dir
-              - gpgagent assets to create/update the key
+            * A 14-day `dev` key will be created if none exists, including:
+              - A `dev` directory in the build keys directory
+              - gpg-agent assets to create/update the key within that `dev`
+                directory
 
           When :key is *not* `dev`, the logic is much stricter:
 
-            - You must already have create `<build_dir>/build_keys/<:key>/`
-              directoy, and placed a valid GPG signing key inside
+            - You must already have created the `<:key>` subdirectory within
+              the build keys directory and placed a valid GPG signing key and
+              requisite gpg-agent assets to access the key within the directory.
             - If the directory or key are missing, the task will fail.
 
           ENV vars:
             - Set `SIMP_PKG_verbose=yes` to report file operations as they happen.
+            - Set `SIMP_PKG_build_keys_dir` to override the default build keys path.
         EOM
         task :key_prep,[:key] => [:prep] do |t,args|
           args.with_defaults(:key => 'dev')
           key = args.key
-          build_keys_dir = File.join(@build_dir, 'build_keys')
-          key_dir = File.join(build_keys_dir,key)
+          key_dir = File.join(@build_keys_dir,key)
           dvd_dir = @dvd_src
 
-          FileUtils.mkdir_p build_keys_dir
+          FileUtils.mkdir_p @build_keys_dir
 
-          Dir.chdir(build_keys_dir) do
+          Dir.chdir(@build_keys_dir) do
             if key == 'dev'
               require 'simp/local_gpg_signing_key'
 
@@ -359,12 +366,18 @@ module Simp::Rake::Build
           Sign a set of RPMs.
 
             Signs any unsigned RPMs in the specified directory
-              * :key - The key directory to use under #{@build_dir}/build_keys
-                * Defaults to #{File.join(File.dirname(@rpm_dir), '*RPMS')}
+              * :key - The key directory to use under the build keys directory
+                * key defaults to 'dev'
+                * build keys directory defaults to
+                  `#{@base_dir}/.dev_gpgkeys/build_keys`
               * :rpm_dir - A directory containing RPM files to sign. Will recurse!
-                * Defaults to 'dev'
+                * Defaults to #{File.join(File.dirname(@rpm_dir), '*RPMS')}
               * :force - Force rpms that are already signed to be resigned
                 * Defaults to 'false', can be enabled with 'true'
+
+          ENV vars:
+            - Set `SIMP_RPM_verbose=yes` to report RPM operations as they happen.
+            - Set `SIMP_PKG_build_keys_dir` to override the default build keys path.
         EOM
         task :signrpms,[:key,:rpm_dir,:force] => [:prep,:key_prep] do |t,args|
           require 'simp/rpm_signer'
@@ -379,7 +392,7 @@ module Simp::Rake::Build
 
           Simp::RpmSigner.sign_rpms(
             args[:rpm_dir],
-            "#{@build_dir}/build_keys/#{args[:key]}",
+            File.join(@build_keys_dir, args[:key]),
             force,
             t.name,
             @cpu_limit,
