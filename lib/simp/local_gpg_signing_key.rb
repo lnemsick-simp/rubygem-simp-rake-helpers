@@ -67,10 +67,10 @@ module Simp
     include FileUtils
     include Simp::CommandUtils
 
-    # `SIMP::RPM.sign_keys` will look for a 'gengpgkey' file to
+    # `SIMP::RPM.signrpms` will look for a 'gengpgkey' file to
     #   non-interactively sign packages.
     #
-    #   @see SIMP::RPM.sign_keys
+    #   @see SIMP::RPM.signrpms
     GPG_GENKEY_PARAMS_FILENAME = 'gengpgkey'.freeze
 
     # @param dir  [String] path to gpg-agent / key directory
@@ -176,9 +176,6 @@ module Simp
             # Start the GPG agent.
             gpg_agent_output = %x(./#{@gpg_agent_script}).strip
 
-            # Provide a local socket (needed by the `gpg` command when
-            local_socket = File.join(Dir.pwd, 'S.gpg-agent')
-
             # By the time we get here, we can be assured we will be starting a
             # new agent, because the directory is cleaned out.
             #
@@ -191,7 +188,8 @@ module Simp
 
             agent_info = gpg_agent_info
 
-            # The socket is useful to get back info on the command line.
+            # The local socket is useful to get back info on the command line.
+            local_socket = File.join(Dir.pwd, 'S.gpg-agent')
             unless File.exist?(File.join(Dir.pwd, File.basename(agent_info[:socket])))
               ln_s(agent_info[:socket], local_socket, :verbose => @verbose)
             end
@@ -214,6 +212,10 @@ module Simp
             agent_info[:pid] = %x{echo 'GETINFO pid' | gpg-connect-agent --homedir=#{Dir.pwd}}.lines.first[1..-1].strip.to_i
 
             generate_key(%{#{agent_info[:socket]}:#{agent_info[:pid]}:1})
+puts '>'*80
+puts 'After key is generated:'
+puts agent_info
+puts '<'*80
           end
         ensure
           kill_agent(agent_info[:pid])

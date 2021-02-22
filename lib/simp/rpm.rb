@@ -598,7 +598,9 @@ EOE
             "--define '%__gpg %{_bindir}/gpg' " +
             "--define '%_gpg_name #{gpgkey[:name]}' " +
             "--define '%_gpg_path #{gpgkey[:dir]}' " +
+"--define '%__gpg_sign_cmd %{__gpg} gpg --pinentry-mode loopback --verbose --no-armor --no-secmem-warning -u \"%{_gpg_name}\" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}' " +
             "--resign #{rpm}"
+puts "Executing: #{signcommand}"
         begin
           PTY.spawn(signcommand) do |read, write, pid|
             begin
