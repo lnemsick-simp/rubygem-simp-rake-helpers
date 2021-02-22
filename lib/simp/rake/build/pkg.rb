@@ -1,7 +1,6 @@
 #!/usr/bin/rake -T
 
 require 'simp/yum'
-require 'simp/local_gpg_signing_key.rb'
 require 'simp/rake/pkg'
 require 'simp/rake/build/constants'
 require 'simp/rake/build/rpmdeps'
@@ -17,7 +16,9 @@ module Simp::Rake::Build
     def initialize( base_dir )
       init_member_vars( base_dir )
 
+      @cpu_limit = get_cpu_limit
       @verbose = ENV.fetch('SIMP_PKG_verbose','no') == 'yes'
+      @rpm_verbose = ENV.fetch('SIMP_RPM_verbose','no') == 'yes'
       @rpm_build_metadata = 'last_rpm_build_metadata.yaml'
       @rpm_dependency_file = File.join(@base_dir, 'build', 'rpm', 'dependencies.yaml')
 
@@ -66,7 +67,7 @@ module Simp::Rake::Build
           @build_dirs.each_pair do |k,dirs|
             Parallel.map(
               Array(dirs),
-              :in_processes => get_cpu_limit,
+              :in_processes => @cpu_limit,
               :progress => t.name
             ) do |dir|
               Dir.chdir(dir) do
@@ -95,7 +96,7 @@ module Simp::Rake::Build
           @build_dirs.each_pair do |k,dirs|
             Parallel.map(
               Array(dirs),
-              :in_processes => get_cpu_limit,
+              :in_processes => @cpu_limit,
               :progress => t.name
             ) do |dir|
               Dir.chdir(dir) do
@@ -138,6 +139,8 @@ module Simp::Rake::Build
 
           Dir.chdir(build_keys_dir) do
             if key == 'dev'
+              require 'simp/local_gpg_signing_key'
+
               Simp::LocalGpgSigningKey.new(key_dir,{verbose: @verbose}).ensure_key
             else
               unless File.directory?(key_dir)
@@ -364,6 +367,8 @@ module Simp::Rake::Build
                 * Defaults to 'false', can be enabled with 'true'
         EOM
         task :signrpms,[:key,:rpm_dir,:force] => [:prep,:key_prep] do |t,args|
+          require 'simp/rpm_signer'
+
           which('rpmsign') || raise(StandardError, 'Could not find rpmsign on your system. Exiting.')
 
           args.with_defaults(:key => 'dev')
@@ -372,27 +377,15 @@ module Simp::Rake::Build
 
           force = (args[:force].to_s == 'false' ? false : true)
 
-          rpm_dirs = Dir.glob(args[:rpm_dir])
-          to_sign = []
+          Simp::RpmSigner.sign_rpms(
+            args[:rpm_dir],
+            "#{@build_dir}/build_keys/#{args[:key]}",
+            force,
+            t.name,
+            @cpu_limit,
+            @rpm_verbose
+         )
 
-          rpm_dirs.each do |rpm_dir|
-            Find.find(rpm_dir) do |rpm|
-              next unless File.readable?(rpm)
-              to_sign << rpm if rpm =~ /\.rpm$/
-            end
-          end
-
-          Parallel.map(
-            to_sign,
-            :in_processes => get_cpu_limit,
-            :progress => t.name
-          ) do |rpm|
-            rpm_info = Simp::RPM.new(rpm)
-
-            if force || !rpm_info.signature
-              Simp::RPM.signrpm(rpm, "#{@build_dir}/build_keys/#{args[:key]}")
-            end
-          end
         end
 
 =begin
@@ -683,12 +676,12 @@ protect=1
               Simp::Rake::Build::RpmDeps::generate_rpm_meta_files(dir, rpm_metadata)
 
               new_rpm = Simp::Rake::Pkg.new(Dir.pwd, opts[:unique_namespace], @simp_version)
-              new_rpm_info = Simp::RPM.new(new_rpm.spec_file)
+              new_rpm_info = Simp::RPM.new(new_rpm.spec_file, @verbose)
             else
               spec_file = Dir.glob(File.join('build', '*.spec'))
               fail("No spec file found in #{dir}/build") if spec_file.empty?
               $stderr.puts "    Found spec file: #{File.expand_path(spec_file.first)}" if @verbose
-              new_rpm_info = Simp::RPM.new(spec_file.first)
+              new_rpm_info = Simp::RPM.new(spec_file.first, @verbose)
             end
 
             if @verbose
@@ -862,7 +855,7 @@ protect=1
           Parallel.map(
             # Allow for shell globs
             Array(dirs),
-            :in_processes => get_cpu_limit,
+            :in_processes => @cpu_limit,
             :progress => task.name
           ) do |dir|
             fail("Could not find directory #{dir}") unless Dir.exist?(dir)

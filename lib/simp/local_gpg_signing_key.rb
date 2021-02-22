@@ -16,18 +16,20 @@ module Simp
   #       settings and socket.
   #
   #   The local signing key's directory includes the following:
-  #   EL7:
+  #   gpg < 2.1.0 (EL7):
   #
   #   ```
   #   #{key_name}/                        # key directory
   #     +-- RPM-GPG-KEY-SIMP-#{key_name}  # key file
   #     +-- gengpgkey                     # --gen-key params file **
+  #     +-- gpg-agent-info.env            # Lists location of gpg-agent daemon socket + pid
+  #     +-- run_gpg_agnet                 # Script used to start gpg-agent
   #     +-- pubring.gpg
   #     +-- secring.gpg
   #     +-- trustdb.gpg
   #   ```
   #
-  #   EL8:
+  #   gpg >= 2.1.0 (EL8):
   #   ```
   #   #{key_name}/                        # key directory
   #     +-- RPM-GPG-KEY-SIMP-#{key_name}  # key file
@@ -38,31 +40,18 @@ module Simp
   #     +-- trustdb.gpg
   #   ```
   #
-  #   `**` = `SIMP::RPM.sign_keys` will use the values in the `gengpgkey` file
+  #   `**` = `SIMP::RPM.signrpms` will use the values in the `gengpgkey` file
   #     for the GPG signing key's email and passphrase
   #
   #   If a new key is required, a project-only `gpg-agent` daemon is momentarily
   #   created to generate it, and destroyed after this is done.  The daemon does
-  #   not interact with any other `gpg-agent` daemons on the system--it is
-  #   launched on a random socket and keeps all its files under the
-  #   #{key_name/} directory.
+  #   not interact with any other `gpg-agent` daemons on the system. It is
+  #   launched on random socket(s) whose socket file(s) can be found as follows:
+  #   * when building in a Docker container for EL8: #{key_name/} directory
+  #   * when building outside of a Docker container for EL8: a temporary
+  #     directory in /run/user/<uid>/gnupg
+  #   * when building for El7: a temporary directory in /tmp (EL7)
   #
-  #   When instantiated, the daemon writes an "env-file" to the #{key_name}
-  #   directory.  This file specifies the location of the daemon's socket and
-  #   pid.
-  #
-  #   A typical env-file looks like:
-  #
-  #   ```sh
-  #   GPG_AGENT_INFO=/tmp/gpg-4yhfOB/S.gpg-agent:15495:1
-  #   ```
-  #
-  #   A brand-new gpg-agent daemon will output similar information, with an
-  #   additional export:
-  #
-  #   ```sh
-  #   GPG_AGENT_INFO=/tmp/gpg-4yhfOB/S.gpg-agent:15495:1; export GPG_AGENT_INFO;\n"
-  #   ```
   class LocalGpgSigningKey
     include FileUtils
     include Simp::CommandUtils
@@ -88,6 +77,7 @@ module Simp
       @key_file  = opts[:file]    || "RPM-GPG-KEY-SIMP-#{@label.capitalize}"
       @verbose   = opts[:verbose] || false
 
+      # for EL7 only
       @gpg_agent_env_file = 'gpg-agent-info.env'
       @gpg_agent_script   = 'run_gpg_agent'
     end
@@ -200,8 +190,8 @@ module Simp
             which('gpg-agent', true)
             which('gpg-connect-agent', true)
 
-            # Start the GPG agent
-            %x{gpg-agent --homedir=#{Dir.pwd} >&/dev/null || gpg-agent --homedir=#{Dir.pwd} --daemon >&/dev/null}
+            # Start the GPG agent, if it is not already running
+            %x{gpg-agent -q --homedir=#{Dir.pwd} >&/dev/null || gpg-agent --homedir=#{Dir.pwd} --daemon >&/dev/null}
 
             agent_info = {}
 

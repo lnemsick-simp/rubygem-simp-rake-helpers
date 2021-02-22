@@ -99,15 +99,10 @@ describe 'rake pkg:signrpms' do
         # NOTE: pkg:signrpms will not actually fail if it can't sign a RPM
         on(host, %(#{run_cmd} "cd '#{test_dir}'; bundle exec rake pkg:signrpms[dev,'#{rpms_dir}']"), opts)
 
-        os_major =  fact_on(host,'operatingsystemmajrelease')
-        if os_major > '7'
-          skip('SIMP-9398: pkg:signrpms does not work on EL8')
-        else
-          result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
-          expect(result.stdout).to match rpm_signed_regex
-          signed_rpm_data = rpm_signed_regex.match(result.stdout)
-          expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, test_dir, opts)
-        end
+        result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
+        expect(result.stdout).to match rpm_signed_regex
+        signed_rpm_data = rpm_signed_regex.match(result.stdout)
+        expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, test_dir, opts)
       end
     end
   end
