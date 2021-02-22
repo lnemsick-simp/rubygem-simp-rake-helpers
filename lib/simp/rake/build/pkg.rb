@@ -111,16 +111,17 @@ module Simp::Rake::Build
         desc <<-EOM
           Prepare a GPG signing key to sign build packages
 
-            * :key - the name of the build keys sub directory to prepare
+            * :key - the name of the build keys subdirectory to prepare
               (defaults to 'dev')
 
               - The default build keys directory is
-                `#{@base_dir}/.dev_gpgkeys/build_keys`
+                `#{@base_dir}/.dev_gpgkeys`
 
 
           When :key is `dev`, a temporary signing key is created, if needed:
 
-            * A 14-day `dev` key will be created if none exists, including:
+            * A 14-day `dev` key will be created if none exists or the existing
+              key has expired.  This includes creating
               - A `dev` directory in the build keys directory
               - gpg-agent assets to create/update the key within that `dev`
                 directory
@@ -369,7 +370,7 @@ module Simp::Rake::Build
               * :key - The key directory to use under the build keys directory
                 * key defaults to 'dev'
                 * build keys directory defaults to
-                  `#{@base_dir}/.dev_gpgkeys/build_keys`
+                  `#{@base_dir}/.dev_gpgkeys`
               * :rpm_dir - A directory containing RPM files to sign. Will recurse!
                 * Defaults to #{File.join(File.dirname(@rpm_dir), '*RPMS')}
               * :force - Force rpms that are already signed to be resigned
@@ -381,8 +382,6 @@ module Simp::Rake::Build
         EOM
         task :signrpms,[:key,:rpm_dir,:force] => [:prep,:key_prep] do |t,args|
           require 'simp/rpm_signer'
-
-          which('rpmsign') || raise(StandardError, 'Could not find rpmsign on your system. Exiting.')
 
           args.with_defaults(:key => 'dev')
           args.with_defaults(:rpm_dir => File.join(File.dirname(@rpm_dir), '*RPMS'))
@@ -689,12 +688,12 @@ protect=1
               Simp::Rake::Build::RpmDeps::generate_rpm_meta_files(dir, rpm_metadata)
 
               new_rpm = Simp::Rake::Pkg.new(Dir.pwd, opts[:unique_namespace], @simp_version)
-              new_rpm_info = Simp::RPM.new(new_rpm.spec_file, @verbose)
+              new_rpm_info = Simp::RPM.new(new_rpm.spec_file)
             else
               spec_file = Dir.glob(File.join('build', '*.spec'))
               fail("No spec file found in #{dir}/build") if spec_file.empty?
               $stderr.puts "    Found spec file: #{File.expand_path(spec_file.first)}" if @verbose
-              new_rpm_info = Simp::RPM.new(spec_file.first, @verbose)
+              new_rpm_info = Simp::RPM.new(spec_file.first)
             end
 
             if @verbose

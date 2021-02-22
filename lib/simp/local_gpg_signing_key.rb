@@ -22,7 +22,7 @@ module Simp
   #   #{key_name}/                        # key directory
   #     +-- RPM-GPG-KEY-SIMP-#{key_name}  # key file
   #     +-- gengpgkey                     # --gen-key params file **
-  #     +-- gpg-agent-info.env            # Lists location of gpg-agent daemon socket + pid
+  #     +-- gpg-agent-info.env            # Lists location of gpg-agent socket + pid
   #     +-- run_gpg_agnet                 # Script used to start gpg-agent
   #     +-- pubring.gpg
   #     +-- secring.gpg
@@ -40,7 +40,7 @@ module Simp
   #     +-- trustdb.gpg
   #   ```
   #
-  #   `**` = `SIMP::RPM.signrpms` will use the values in the `gengpgkey` file
+  #   `**` = `SIMP::RpmSigner.sign_rpms` will use the values in the `gengpgkey` file
   #     for the GPG signing key's email and passphrase
   #
   #   If a new key is required, a project-only `gpg-agent` daemon is momentarily
@@ -56,10 +56,10 @@ module Simp
     include FileUtils
     include Simp::CommandUtils
 
-    # `SIMP::RPM.signrpms` will look for a 'gengpgkey' file to
+    # `SIMP::RpmSigner.sign_rpms` will look for a 'gengpgkey' file to
     #   non-interactively sign packages.
     #
-    #   @see SIMP::RPM.signrpms
+    #   @see SIMP::RpmSigner.sign_rpms
     GPG_GENKEY_PARAMS_FILENAME = 'gengpgkey'.freeze
 
     # @param dir  [String] path to gpg-agent / key directory
@@ -202,10 +202,6 @@ module Simp
             agent_info[:pid] = %x{echo 'GETINFO pid' | gpg-connect-agent --homedir=#{Dir.pwd}}.lines.first[1..-1].strip.to_i
 
             generate_key(%{#{agent_info[:socket]}:#{agent_info[:pid]}:1})
-puts '>'*80
-puts 'After key is generated:'
-puts agent_info
-puts '<'*80
           end
         ensure
           kill_agent(agent_info[:pid])
