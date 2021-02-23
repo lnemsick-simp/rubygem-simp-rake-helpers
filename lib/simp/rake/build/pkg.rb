@@ -375,28 +375,48 @@ module Simp::Rake::Build
                 * Defaults to #{File.join(File.dirname(@rpm_dir), '*RPMS')}
               * :force - Force rpms that are already signed to be resigned
                 * Defaults to 'false', can be enabled with 'true'
+              * :digest_algo - Digest algorithm to be used when signing the RPMs
+                * Defaults to 'sha256'
 
           ENV vars:
             - Set `SIMP_RPM_verbose=yes` to report RPM operations as they happen.
             - Set `SIMP_PKG_build_keys_dir` to override the default build keys path.
         EOM
-        task :signrpms,[:key,:rpm_dir,:force] => [:prep,:key_prep] do |t,args|
+        task :signrpms,[:key,:rpm_dir,:force,:digest_algo] => [:prep,:key_prep] do |t,args|
           require 'simp/rpm_signer'
 
           args.with_defaults(:key => 'dev')
           args.with_defaults(:rpm_dir => File.join(File.dirname(@rpm_dir), '*RPMS'))
           args.with_defaults(:force => 'false')
+          args.with_defaults(:digest_algo => 'sha256')
 
           force = (args[:force].to_s == 'false' ? false : true)
 
-          Simp::RpmSigner.sign_rpms(
-            args[:rpm_dir],
-            File.join(@build_keys_dir, args[:key]),
-            force,
-            t.name,
-            @cpu_limit,
-            @rpm_verbose
-         )
+          opts = {
+            :force              => force,
+            :digest_algo        => args[:digest_algo],
+            :progress_bar_title => t.name,
+            :max_concurrent     => @cpu_limit,
+            :verbose            => @rpm_verbose
+          }
+
+          begin
+            Simp::RpmSigner.sign_rpms(
+              args[:rpm_dir],
+              File.join(@build_keys_dir, args[:key]),
+              opts
+           )
+         rescue Exception => e
+           err_msg = [
+             e.message,
+             '',
+             "If the problem is 'socket name <xxx> is too long', use SIMP_PKG_build_keys_dir",
+             'to override',
+             @build_keys_dir,
+             'with a shorter path. The socket name must be < 108 characters.'
+           ].join("\n")
+           raise(err_msg)
+         end
 
         end
 

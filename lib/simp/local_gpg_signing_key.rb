@@ -186,52 +186,15 @@ module Simp
         clean_gpg_agent_directory
         write_genkey_parameter_file
 
+        agent_info = nil
         begin
           if gpg_version < Gem::Version.new('2.1')
-            write_gpg_agent_startup_script
-
-            # Start the GPG agent.
-            gpg_agent_output = %x(./#{@gpg_agent_script}).strip
-
-            # By the time we get here, we can be assured we will be starting a
-            # new agent, because the directory is cleaned out.
-            #
-            # Follow-on gpg actions will read the agent's information from
-            # the env-file the agent writes at startup.
-
-            # We're using the --sh option which will spew out the agent config
-            # when the agent starts. If it is empty, this is a problem.
-            warn(empty_gpg_agent_message) if gpg_agent_output.empty?
-
-            agent_info = gpg_agent_info
-
-            # The local socket is useful to get back info on the command line.
-            local_socket = File.join(Dir.pwd, 'S.gpg-agent')
-            unless File.exist?(File.join(Dir.pwd, File.basename(agent_info[:socket])))
-              ln_s(agent_info[:socket], local_socket, :verbose => @verbose)
-            end
-
-            generate_key(agent_info[:info])
+            agent_info = start_gpg_agent_old
           else
-            which('gpg', true)
-            which('gpg-agent', true)
-            which('gpg-connect-agent', true)
-
-            # Start the GPG agent, if it is not already running
-            %x{gpg-agent -q --homedir=#{Dir.pwd} >&/dev/null || gpg-agent --homedir=#{Dir.pwd} --daemon >&/dev/null}
-
-            agent_info = {}
-
-            # Provide a local socket (needed by the `gpg` command when
-            agent_info[:socket] = %x{echo 'GETINFO socket_name' | gpg-connect-agent --homedir=#{Dir.pwd}}.lines.first[1..-1].strip
-
-            # Get the pid
-            agent_info[:pid] = %x{echo 'GETINFO pid' | gpg-connect-agent --homedir=#{Dir.pwd}}.lines.first[1..-1].strip.to_i
-
-            generate_key(%{#{agent_info[:socket]}:#{agent_info[:pid]}:1})
+            agent_info = start_gpg_agent
           end
         ensure
-          kill_agent(agent_info[:pid])
+          kill_agent(agent_info[:pid]) if agent_info
         end
 
         agent_info
@@ -243,7 +206,7 @@ module Simp
     #
     # @return [String] Warning message
     def empty_gpg_agent_message
-      <<-WARNING.gsub(/^\s{8}/,'')
+      <<~WARNING
         WARNING: Tried to start an project-only gpg-agent daemon on a random socket by
                  running the script:
 
@@ -264,7 +227,6 @@ module Simp
     #
     # @param pid [String] The GPG Agent PID to kill
     def kill_agent(pid)
-      rm('S.gpg-agent') if File.symlink?('S.gpg-agent')
       if pid
         Process.kill(0, pid)
         Process.kill(15, pid)
@@ -284,8 +246,8 @@ module Simp
       gpg_cmd = %(GPG_AGENT_INFO=#{gpg_agent_info_str} gpg --homedir="#{@dir}")
 
       pipe    = @verbose ? '| tee' : '>'
-      sh %(#{gpg_cmd} --batch --gen-key #{GPG_GENKEY_PARAMS_FILENAME})
-      sh %(#{gpg_cmd} --armor --export #{@key_email} #{pipe} "#{@key_file}")
+      %x(#{gpg_cmd} --batch --gen-key #{GPG_GENKEY_PARAMS_FILENAME})
+      %x(#{gpg_cmd} --armor --export #{@key_email} #{pipe} "#{@key_file}")
 
       if File.stat(@key_file).size == 0
         fail "Error: Something went wrong generating #{@key_file}"
@@ -299,6 +261,62 @@ module Simp
       info    = %r{^(GPG_AGENT_INFO=)?(?<info>[^;]+)}.match(str)[:info]
       matches = %r{^(?<socket>[^:]+):(?<pid>[^:]+)}.match(info)
       { info: info.strip, socket: matches[:socket], pid: matches[:pid].to_i }
+    end
+
+    # Start the gpg-agent
+    # @return Hash of agent info
+    # @raise if gpg-agent fails to start
+    def start_gpg_agent
+      which('gpg', true)
+      which('gpg-agent', true)
+      which('gpg-connect-agent', true)
+
+      # Start the GPG agent, if it is not already running
+      check_agent = "gpg-agent -q --homedir=#{Dir.pwd} >&/dev/null"
+      start_agent = "gpg-agent --homedir=#{Dir.pwd} --daemon >&/dev/null"
+      cmd = "#{check_agent} || #{start_agent}"
+      puts "Executing: #{cmd}" if @verbose
+      %x(#{cmd})
+      if $? && $?.exitstatus != 0
+        err_msg = [
+          'Failed to start gpg-agent during key creation.',
+          "  Execute '#{start_agent.gsub(' >&/dev/null','')}' to debug."
+        ].join("\n")
+        raise(err_msg)
+      end
+
+      agent_info = {}
+
+      # Provide a local socket (needed by the `gpg` command when
+      agent_info[:socket] = %x{echo 'GETINFO socket_name' | gpg-connect-agent --homedir=#{Dir.pwd}}.lines.first[1..-1].strip
+
+      # Get the pid
+      agent_info[:pid] = %x{echo 'GETINFO pid' | gpg-connect-agent --homedir=#{Dir.pwd}}.lines.first[1..-1].strip.to_i
+
+      generate_key(%{#{agent_info[:socket]}:#{agent_info[:pid]}:1})
+
+      agent_info
+    end
+
+    # Start the gpg-agent with options suitable for gpg version < 2.1
+    # @return Hash of agent info
+    def start_gpg_agent_old
+      write_gpg_agent_startup_script
+      gpg_agent_output = %x(./#{@gpg_agent_script}).strip
+
+      # By the time we get here, we can be assured we will be starting a
+      # new agent, because the directory is cleaned out.
+      #
+      # Follow-on gpg actions will read the agent's information from
+      # the env-file the agent writes at startup.
+
+      # We're using the --sh option which will spew out the agent config
+      # when the agent starts. If it is empty, this is a problem.
+      warn(empty_gpg_agent_message) if gpg_agent_output.empty?
+
+      agent_info = gpg_agent_info
+      generate_key(agent_info[:info])
+      agent_info
     end
 
     # Write the `gpg --genkey --batch` control parameter file

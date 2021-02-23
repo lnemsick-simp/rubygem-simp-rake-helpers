@@ -131,14 +131,15 @@ class Simp::RpmSigner
 
   # Signs the given RPM with the GPG key found in gpg_keydir
   #
-  # @param rpm        Fully qualified path to an RPM to be signed.
-  # @param gpg_keydir The full path of the directory where the key resides.
-  # @param verbose    Whether to log debug information.
+  # @param rpm          Fully qualified path to an RPM to be signed.
+  # @param gpg_keydir   The full path of the directory where the key resides.
+  # @param digest_algo  Digest algorithm to use when signing RPM.
+  # @param verbose      Whether to log debug information.
   #
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg
   #   'executable cannot be found, the GPG key directory does not exist or
   #   the GPG key metadata cannot be determined via 'gpg'
-  def self.sign_rpm(rpm, gpg_keydir, verbose = false)
+  def self.sign_rpm(rpm, gpg_keydir, digest_algo = 'sha256', verbose = false)
     # This may be a little confusing...Although we're using 'rpm --resign'
     # in lieu of 'rpmsign --addsign', they are equivalent and the presence
     # of 'rpmsign' is a legitimate check that the 'rpm --resign' capability
@@ -147,12 +148,9 @@ class Simp::RpmSigner
 
     gpgkey = load_key(gpg_keydir, verbose)
 
-    gpg_digest_algo = nil
     gpg_sign_cmd_extra_args = nil
     if Gem::Version.new(Simp::RPM.version) >= Gem::Version.new('4.13.0')
-      gpg_digest_algo = "--define '%_gpg_digest_algo sha256'"
       gpg_sign_cmd_extra_args = "--define '%_gpg_sign_cmd_extra_args --pinentry-mode loopback --verbose'"
-#      gpg_sign_cmd = "--define '%__gpg_sign_cmd %{__gpg} gpg --pinentry-mode loopback --verbose --no-armor --no-secmem-warning -u \"%{_gpg_name}\" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}'"
     end
 
     signcommand = [
@@ -160,8 +158,8 @@ class Simp::RpmSigner
       "--define '%_signature gpg'",
       "--define '%__gpg %{_bindir}/gpg'",
       "--define '%_gpg_name #{gpgkey[:name]}'",
-      "--define '%_gpg_path #{gpgkey[:dir]}' ",
-      gpg_digest_algo,
+      "--define '%_gpg_path #{gpgkey[:dir]}'",
+      "--define '%_gpg_digest_algo #{digest_algo}'",
       gpg_sign_cmd_extra_args,
       "--resign #{rpm}"
      ].compact.join(' ')
@@ -204,6 +202,7 @@ class Simp::RpmSigner
   # @param rpm_dir    A directory or directory glob pattern specifying 1 or
   #                   more directories containing RPM files to sign.
   # @param gpg_keydir The full path of the directory where the key resides
+  # @param options    Options Hash
   # @param force      Force RPMs that are already signed to be resigned.
   # @param progress_bar_title Title for the progress bar logged to the
   #                   console during the signing process.
@@ -217,8 +216,14 @@ class Simp::RpmSigner
   #
   #   **All other RPM signing errors are logged and ignored.**
   #
-  def self.sign_rpms(rpm_dir, gpg_keydir, force=false,
-      progress_bar_title = 'sign_rpms', max_concurrent = 1, verbose = false)
+  def self.sign_rpms(rpm_dir, gpg_keydir, options = {})
+   opts = {
+     :force              => false,
+     :digest_algo        => 'sha256',
+     :progress_bar_title => 'sign_rpms',
+     :max_concurrent     => 1,
+     :verbose            => false
+    }.merge(options)
 
     rpm_dirs = Dir.glob(rpm_dir)
     to_sign = []
@@ -233,12 +238,12 @@ class Simp::RpmSigner
     begin
       Parallel.map(
         to_sign,
-        :in_processes => max_concurrent,
-        :progress => progress_bar_title
+        :in_processes => opts[:max_concurrent],
+        :progress => opts[:progress_bar_title]
       ) do |rpm|
 
-        if force || !Simp::RPM.new(rpm, verbose).signature
-          sign_rpm(rpm, gpg_keydir, verbose)
+        if opts[:force] || !Simp::RPM.new(rpm, opts[:verbose]).signature
+          sign_rpm(rpm, gpg_keydir, opts[:digest_algo], opts[:verbose])
         else
           puts "Skipping signed package #{rpm}" if verbose
         end
