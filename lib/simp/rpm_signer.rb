@@ -5,7 +5,6 @@ require 'simp/command_utils'
 
 module Simp; end
 
-
 # Class to sign RPMs.  Uses 'gpg' and 'rpmsign' executables.
 class Simp::RpmSigner
   require 'expect'
@@ -44,8 +43,8 @@ class Simp::RpmSigner
   # The GPG key is to be used to sign RPMs. If the required metadata
   # cannot be found in gpg_keydir, then the user will be prompted for it.
   #
-  # +gpg_keydir+:: The full path of the directory where the key resides
-  # +verbose+::    Whether to log debug information.
+  # @param gpg_keydir The full path of the directory where the key resides
+  # @param verbose    Whether to log debug information.
   #
   # @raise If the 'gpg' executable cannot be found, the GPG key directory
   #   does not exist or the GPG key metadata cannot be determined via 'gpg'
@@ -99,7 +98,9 @@ class Simp::RpmSigner
 
     gpg_key_size = nil
     gpg_key_id = nil
-    cmd = "gpg --with-colons --homedir=#{gpg_keydir} --list-keys #{gpg_name} 2>&1"
+    # gpg_name is an email, so enclose in <> to only search for keys
+    # that match that email address
+    cmd = "gpg --with-colons --homedir=#{gpg_keydir} --list-keys '<#{gpg_name}>' 2>&1"
     puts "Executing: #{cmd}" if verbose
     %x(#{cmd}).each_line do |line|
       # See https://github.com/CSNW/gnupg/blob/master/doc/DETAILS
@@ -108,7 +109,7 @@ class Simp::RpmSigner
       #   2    key length
       #   4    keyID
       fields = line.split(':')
-      if fields[0] == 'pub'
+      if fields[0] && (fields[0] == 'pub')
         gpg_key_size = fields[2]
         gpg_key_id = fields[4]
         break
@@ -130,9 +131,9 @@ class Simp::RpmSigner
 
   # Signs the given RPM with the GPG key found in gpg_keydir
   #
-  # +rpm+::        Fully qualified path to an RPM to be signed.
-  # +gpg_keydir+:: The full path of the directory where the key resides.
-  # +verbose+::    Whether to log debug information.
+  # @param rpm        Fully qualified path to an RPM to be signed.
+  # @param gpg_keydir The full path of the directory where the key resides.
+  # @param verbose    Whether to log debug information.
   #
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg
   #   'executable cannot be found, the GPG key directory does not exist or
@@ -196,15 +197,15 @@ class Simp::RpmSigner
   # Signs any RPMs found within the entire rpm_dir directory tree with
   # the GPG key found in gpg_keydir
   #
-  # +rpm_dir+::    A directory or directory glob pattern specifying 1 or more
-  #                directories containing RPM files to sign.
-  # +gpg_keydir+:: The full path of the directory where the key resides
-  # +force+::      Force RPMs that are already signed to be resigned.
-  # +progress_bar_title+:: Title for the progress bar logged to the
-  #                console during the signing process.
-  # +max_concurrent+:: Maximum number of concurrent RPM signing
-  #                operations
-  # +verbose+::    Whether to log debug information.
+  # @param rpm_dir    A directory or directory glob pattern specifying 1 or
+  #                   more directories containing RPM files to sign.
+  # @param gpg_keydir The full path of the directory where the key resides
+  # @param force      Force RPMs that are already signed to be resigned.
+  # @param progress_bar_title Title for the progress bar logged to the
+  #                   console during the signing process.
+  # @param max_concurrent Maximum number of concurrent RPM signing
+  #                   operations
+  # @param verbose    Whether to log debug information.
   #
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg'
   #   executable cannot be found, the GPG key directory does not exist or

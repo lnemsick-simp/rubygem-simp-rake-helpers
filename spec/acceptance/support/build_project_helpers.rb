@@ -57,13 +57,13 @@ module Simp::BeakerHelpers::SimpRakeHelpers::BuildProjectHelpers
   # Scans a host path for the 'SIMP Development' GPG key and returns its Key ID
   #
   # @param [Host, String, Symbol] host Beaker host
-  # @param [Hash{Symbol=>String}] opts Beaker options Hash for `#on` ({})
   # @param [String] proj_dir Absolute path to the parent project directory
   # @param [Hash{Symbol=>String}] opts Beaker options Hash for `#on` ({})
   # @return [String] GPG dev signing Key ID
   #
   def dev_signing_key_id(host, proj_dir, opts = {})
     key_dir = distribution_dir(host, proj_dir, opts) + '/build_keys/dev'
+    # NOTE: This search uses a substring match on 'SIMP Development'.
     res = on(host, %(#{run_cmd} "gpg --with-colons --fingerprint --homedir='#{key_dir}' 'SIMP Development'"))
     pub_lines = res.stdout.lines.select { |x| x.start_with?('pub') }
     raise "No 'SIMP Development' GPG keys found under '#{proj_dir}'" if pub_lines.empty?

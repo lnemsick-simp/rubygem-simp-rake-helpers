@@ -115,18 +115,45 @@ module Simp
       info
     end
 
-    # Return the number of days left before the GPG signing key expires
+    # Return the number of days left before the GPG signing key expires or
+    # 0 if the key does not exist or the key is missing an expiration date.
     def dev_key_days_left
-      ensure_gpg_directory
-      days_left   = 0
-
       which('gpg', true)
-      # FIXME This output parsing is fragile. Should use --with-colons option!
-      current_key = %x(GPG_AGENT_INFO='' gpg --homedir=#{@dir} --list-keys #{@key_email} 2>/dev/null)
-      unless current_key.empty?
-        lasts_until = current_key.lines.first.strip.split("\s").last.delete(']')
-        days_left = (Date.parse(lasts_until) - Date.today).to_i
+      ensure_gpg_directory
+
+      days_left = 0
+      cmd = "gpg --with-colons --homedir=#{gpg_keydir} --list-keys '<#{@key_email}>' 2>&1"
+      puts "Executing: #{cmd}" if @verbose
+      %x(#{cmd}).each_line do |line|
+        # See https://github.com/CSNW/gnupg/blob/master/doc/DETAILS
+        # Index  Content
+        #   0    record type
+        #   6    expiration date
+        #
+        # If expiration date contains a 'T', it is in an ISO 8601 format
+        # (e.g., 20210223T091500). Otherwise it is seconds since the epoch.
+        #
+        fields = line.split(':')
+        if fields[0] && (fields[0] == 'pub')
+          raw_exp_date = fields[6]
+          unless raw_exp_date.nil? || raw_exp_date.strip.empty?
+            require 'date'
+
+            exp_date = nil
+            if raw_exp_date.include?('T')
+              exp_date = DateTime.parse(raw_exp_date).to_date
+            else
+              exp_date = Time.at(raw_exp_date.to_i).to_date
+            end
+
+            days_left = (exp_date - Date.today).to_i
+            days_left = 0 if days_left < 0
+          end
+
+          break
+        end
       end
+
       days_left
     end
 
