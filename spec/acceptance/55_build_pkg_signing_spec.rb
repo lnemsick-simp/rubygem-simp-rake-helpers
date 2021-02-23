@@ -32,7 +32,7 @@ describe 'rake pkg:signrpms' do
       dist_dir = distribution_dir(host, test__dir, opts)
       host__dirs[host] = {
         test_dir:  test__dir,
-        dev_keydir: "#{dist_dir}/build_keys/dev",
+        dev_keydir: "#{test__dir}/.dev_gpgkeys/dev",
         dvd_dir: "#{dist_dir}/DVD",
       }
       host__dirs[host.name] = host__dirs[host]

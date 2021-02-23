@@ -147,9 +147,12 @@ class Simp::RpmSigner
 
     gpgkey = load_key(gpg_keydir, verbose)
 
-    gpg_sign_cmd = nil
+    gpg_digest_algo = nil
+    gpg_sign_cmd_extra_args = nil
     if Gem::Version.new(Simp::RPM.version) >= Gem::Version.new('4.13.0')
-      gpg_sign_cmd = "--define '%__gpg_sign_cmd %{__gpg} gpg --pinentry-mode loopback --verbose --no-armor --no-secmem-warning -u \"%{_gpg_name}\" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}'"
+      gpg_digest_algo = "--define '%_gpg_digest_algo sha256'"
+      gpg_sign_cmd_extra_args = "--define '%_gpg_sign_cmd_extra_args --pinentry-mode loopback --verbose'"
+#      gpg_sign_cmd = "--define '%__gpg_sign_cmd %{__gpg} gpg --pinentry-mode loopback --verbose --no-armor --no-secmem-warning -u \"%{_gpg_name}\" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}'"
     end
 
     signcommand = [
@@ -158,7 +161,8 @@ class Simp::RpmSigner
       "--define '%__gpg %{_bindir}/gpg'",
       "--define '%_gpg_name #{gpgkey[:name]}'",
       "--define '%_gpg_path #{gpgkey[:dir]}' ",
-      gpg_sign_cmd,
+      gpg_digest_algo,
+      gpg_sign_cmd_extra_args,
       "--resign #{rpm}"
      ].compact.join(' ')
 

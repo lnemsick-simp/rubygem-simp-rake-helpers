@@ -122,7 +122,7 @@ module Simp
       ensure_gpg_directory
 
       days_left = 0
-      cmd = "gpg --with-colons --homedir=#{gpg_keydir} --list-keys '<#{@key_email}>' 2>&1"
+      cmd = "gpg --with-colons --homedir=#{@dir} --list-keys '<#{@key_email}>' 2>&1"
       puts "Executing: #{cmd}" if @verbose
       %x(#{cmd}).each_line do |line|
         # See https://github.com/CSNW/gnupg/blob/master/doc/DETAILS

@@ -62,7 +62,7 @@ module Simp::BeakerHelpers::SimpRakeHelpers::BuildProjectHelpers
   # @return [String] GPG dev signing Key ID
   #
   def dev_signing_key_id(host, proj_dir, opts = {})
-    key_dir = distribution_dir(host, proj_dir, opts) + '/build_keys/dev'
+    key_dir = File.join(proj_dir, '.dev_gpgkeys', 'dev')
     # NOTE: This search uses a substring match on 'SIMP Development'.
     res = on(host, %(#{run_cmd} "gpg --with-colons --fingerprint --homedir='#{key_dir}' 'SIMP Development'"))
     pub_lines = res.stdout.lines.select { |x| x.start_with?('pub') }
