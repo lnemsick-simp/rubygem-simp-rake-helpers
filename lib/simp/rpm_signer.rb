@@ -246,7 +246,7 @@ class Simp::RpmSigner
         if opts[:force] || !Simp::RPM.new(rpm).signature
           sign_rpm(rpm, gpg_keydir, opts[:digest_algo], opts[:verbose])
         else
-          puts "Skipping signed package #{rpm}" if verbose
+          puts "Skipping signed package #{rpm}" if opts[:verbose]
         end
       end
     ensure

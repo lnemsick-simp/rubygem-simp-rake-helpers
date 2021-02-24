@@ -2,9 +2,17 @@
 - Disable brp-mangle-shebangs when building RPMs
 - Fixed bug in GPG handling for GPG 2.1+ in which an existing
   GPG key that was not cached internally was not detected.
-- Deprecated the following top-level rake tasks for Puppet modules:
+- Fixed bug where pkg:signrpms failed to sign RPMs on EL8.
+- Deprecated the following top-level Rake tasks for Puppet modules:
   - compare_latest_tag: use pkg:compare_latest_tag instead
   - changelog_annotation: use pkg:create_tag_changelog instead
+- Changed the default location of the GPG keys directory used in the
+  pkg:key_prep and pkg:signrpms Rake tasks to <base_dir>/.dev_gpgkeys.
+- Added a SIMP_PKG_build_keys_dir environment variable that overrides
+  the default location of the GPG keys directory used in the pkg:key_prep
+  and pkg:signrpms Rake tasks.
+  - Useful when the gpg-agent daemon fails to start because its socket
+    path is longer than 108 characters.
 
 ### 5.11.6 / 2021-02-03
 * Fix GPG handling for GPG 2.1+
