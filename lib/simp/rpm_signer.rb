@@ -10,7 +10,7 @@ class Simp::RpmSigner
   require 'expect'
   require 'pty'
 
-  include Simp::CommandUtils
+  extend Simp::CommandUtils
 
   @@gpg_keys = Hash.new
 
@@ -109,7 +109,7 @@ class Simp::RpmSigner
       #   4    keyID
       fields = line.split(':')
       if fields[0] && (fields[0] == 'pub')
-        gpg_key_size = fields[2]
+        gpg_key_size = fields[2].to_i
         gpg_key_id = fields[4]
         break
       end
@@ -120,9 +120,9 @@ class Simp::RpmSigner
     end
 
     @@gpg_keys[gpg_key] = {
-      :dir => gpg_keydir,
-      :name => gpg_name,
-      :key_id => gpg_key_id,
+      :dir      => gpg_keydir,
+      :name     => gpg_name,
+      :key_id   => gpg_key_id,
       :key_size => gpg_key_size,
       :password => gpg_password
     }
@@ -252,5 +252,9 @@ class Simp::RpmSigner
     ensure
       kill_gpg_agent(gpg_keydir)
     end
+  end
+
+  def self.clear_gpg_keys_cache
+    @@gpg_keys.clear
   end
 end
