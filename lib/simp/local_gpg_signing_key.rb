@@ -247,7 +247,7 @@ module Simp
 
       pipe    = @verbose ? '| tee' : '>'
       %x(#{gpg_cmd} --batch --gen-key #{GPG_GENKEY_PARAMS_FILENAME})
-      %x(#{gpg_cmd} --armor --export #{@key_email} #{pipe} "#{@key_file}")
+      %x(#{gpg_cmd} --armor --export '<#{@key_email}>' #{pipe} "#{@key_file}")
 
       if File.stat(@key_file).size == 0
         fail "Error: Something went wrong generating #{@key_file}"
