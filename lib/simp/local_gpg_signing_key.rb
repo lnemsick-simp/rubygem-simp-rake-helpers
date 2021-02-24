@@ -277,7 +277,7 @@ module Simp
       cmd = "#{check_agent} || #{start_agent}"
       puts "Executing: #{cmd}" if @verbose
       %x(#{cmd})
-      if $? && $?.exitstatus != 0
+      if $? && ($?.exitstatus != 0)
         err_msg = [
           'Failed to start gpg-agent during key creation.',
           "  Execute '#{start_agent.gsub(' >&/dev/null','')}' to debug."
@@ -359,7 +359,7 @@ module Simp
       which('gpg-agent', true)
       pinentry_cmd = which('pinentry-curses', true)
 
-      gpg_agent_script = <<-AGENT_SCRIPT.gsub(%r{^ {20}}, '')
+      gpg_agent_script = <<~AGENT_SCRIPT
         #!/bin/sh
 
         gpg-agent --homedir=#{Dir.pwd} --daemon \

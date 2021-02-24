@@ -18,7 +18,6 @@ module Simp::Rake::Build
 
       @cpu_limit = get_cpu_limit
       @verbose = ENV.fetch('SIMP_PKG_verbose','no') == 'yes'
-      @rpm_verbose = ENV.fetch('SIMP_RPM_verbose','no') == 'yes'
       @rpm_build_metadata = 'last_rpm_build_metadata.yaml'
       @rpm_dependency_file = File.join(@base_dir, 'build', 'rpm', 'dependencies.yaml')
       @build_keys_dir = ENV.fetch('SIMP_PKG_build_keys_dir', File.join(@base_dir, '.dev_gpgkeys'))
@@ -397,7 +396,7 @@ module Simp::Rake::Build
             :digest_algo        => args[:digest_algo],
             :progress_bar_title => t.name,
             :max_concurrent     => @cpu_limit,
-            :verbose            => @rpm_verbose
+            :verbose            => @verbose
           }
 
           begin

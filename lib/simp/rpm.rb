@@ -43,8 +43,8 @@ module Simp
     # [signature] The signature key of the package, if it exists. Will not
     #   apply when +rpm_source+ is an RPM spec file.
     # [rpm_name] The full name of the rpm
-    def initialize(rpm_source, verbose = (ENV.fetch('SIMP_RPM_verbose','no') =='yes'))
-      @verbose = verbose
+    def initialize(rpm_source)
+      @verbose = ENV.fetch('SIMP_RPM_verbose','no') =='yes'
 
       update_rpmmacros
 
@@ -401,20 +401,20 @@ module Simp
       end
 
       if version_results[:exit_status] != 0
-        raise <<-EOE
-#{indent('Error getting RPM info:', 2)}
-#{indent(version_results[:stderr].strip, 5)}
-#{indent("Run '#{rpm_version_query.gsub("\n",'\\n')} #{query_source}' to recreate the issue.", 2)}
-EOE
+        raise <<~EOE
+          #{indent('Error getting RPM info:', 2)}
+          #{indent(version_results[:stderr].strip, 5)}
+          #{indent("Run '#{rpm_version_query.gsub("\n",'\\n')} #{query_source}' to recreate the issue.", 2)}
+        EOE
       end
 
       unless signature_results.nil?
         if signature_results[:exit_status] != 0
-          raise <<-EOE
-#{indent('Error getting RPM signature:', 2)}
-#{indent(signature_results[:stderr].strip, 5)}
-#{indent("Run '#{rpm_signature_query.gsub("\n",'\\n')} #{query_source}' to recreate the issue.", 2)}
-EOE
+          raise <<~EOE
+            #{indent('Error getting RPM signature:', 2)}
+            #{indent(signature_results[:stderr].strip, 5)}
+            #{indent("Run '#{rpm_signature_query.gsub("\n",'\\n')} #{query_source}' to recreate the issue.", 2)}
+          EOE
        else
          signature = signature_results[:stdout].strip
        end

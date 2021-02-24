@@ -5,7 +5,7 @@ require 'simp/command_utils'
 
 module Simp; end
 
-# Class to sign RPMs.  Uses 'gpg' and 'rpmsign' executables.
+# Class to sign RPMs.  Uses 'gpg' and 'rpm' executables.
 class Simp::RpmSigner
   require 'expect'
   require 'pty'
@@ -22,11 +22,11 @@ class Simp::RpmSigner
   def self.kill_gpg_agent(gpg_keydir)
     return if Gem::Version.new(Simp::RPM.version) < Gem::Version.new('4.13.0')
 
-    `gpg-agent --homedir #{gpg_keydir} -q >& /dev/null`
-    if $? && $?.exitstatus == 0
+    %x(gpg-agent --homedir #{gpg_keydir} -q >& /dev/null)
+    if $? && ($?.exitstatus == 0)
       # gpg-agent is running for specified keydir, so query it for its pid
       output = %x{echo 'GETINFO pid' | gpg-connect-agent --homedir=#{gpg_keydir}}
-      if $? && $?.exitstatus == 0
+      if $? && ($?.exitstatus == 0)
         pid = output.lines.first[1..-1].strip.to_i
         begin
           Process.kill(0, pid)
@@ -40,14 +40,15 @@ class Simp::RpmSigner
 
   # Loads metadata for a GPG key found in gpg_keydir.
   #
-  # The GPG key is to be used to sign RPMs. If the required metadata
-  # cannot be found in gpg_keydir, then the user will be prompted for it.
+  # The GPG key is to be used to sign RPMs. If the required metadata cannot be
+  # retrieved from files found in the gpg_keydir, the user will be prompted
+  # for it.
   #
   # @param gpg_keydir The full path of the directory where the key resides
   # @param verbose    Whether to log debug information.
   #
   # @raise If the 'gpg' executable cannot be found, the GPG key directory
-  #   does not exist or the GPG key metadata cannot be determined via 'gpg'
+  #   does not exist or GPG key metadata cannot be determined via 'gpg'
   #
   def self.load_key(gpg_keydir, verbose = false)
     which('gpg') || raise("ERROR: Cannot sign RPMs without 'gpg'")
@@ -98,8 +99,6 @@ class Simp::RpmSigner
 
     gpg_key_size = nil
     gpg_key_id = nil
-    # gpg_name is an email, so enclose in <> to only search for keys
-    # that match that email address
     cmd = "gpg --with-colons --homedir=#{gpg_keydir} --list-keys '<#{gpg_name}>' 2>&1"
     puts "Executing: #{cmd}" if verbose
     %x(#{cmd}).each_line do |line|
@@ -117,7 +116,7 @@ class Simp::RpmSigner
     end
 
     if !gpg_key_size || !gpg_key_id
-      raise('Error getting GPG Key metadata')
+      raise("Error getting GPG key ID or Key size metadata for #{gpg_name}")
     end
 
     @@gpg_keys[gpg_key] = {
@@ -162,7 +161,7 @@ class Simp::RpmSigner
       "--define '%_gpg_digest_algo #{digest_algo}'",
       gpg_sign_cmd_extra_args,
       "--resign #{rpm}"
-     ].compact.join(' ')
+    ].compact.join(' ')
 
     begin
       if verbose
@@ -203,12 +202,14 @@ class Simp::RpmSigner
   #                   more directories containing RPM files to sign.
   # @param gpg_keydir The full path of the directory where the key resides
   # @param options    Options Hash
-  # @param force      Force RPMs that are already signed to be resigned.
-  # @param progress_bar_title Title for the progress bar logged to the
-  #                   console during the signing process.
-  # @param max_concurrent Maximum number of concurrent RPM signing
-  #                   operations
-  # @param verbose    Whether to log debug information.
+  #
+  # @options options :force              Force RPMs that are already signed
+  #                                      to be resigned.
+  # @options options :progress_bar_title Title for the progress bar logged to
+  #                                      the console during the signing process.
+  # @options options :max_concurrent     Maximum number of concurrent RPM
+  #                                      signing operations.
+  # @options options :verbose            Whether to log debug information.
   #
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg'
   #   executable cannot be found, the GPG key directory does not exist or
