@@ -243,7 +243,7 @@ class Simp::RpmSigner
         :progress => opts[:progress_bar_title]
       ) do |rpm|
 
-        if opts[:force] || !Simp::RPM.new(rpm, opts[:verbose]).signature
+        if opts[:force] || !Simp::RPM.new(rpm).signature
           sign_rpm(rpm, gpg_keydir, opts[:digest_algo], opts[:verbose])
         else
           puts "Skipping signed package #{rpm}" if verbose
