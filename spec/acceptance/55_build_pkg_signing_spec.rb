@@ -21,14 +21,15 @@ describe 'rake pkg:signrpms' do
   end
 
   # Provides a scaffolded test project and `let` variables
-  shared_context 'a freshly-scaffolded test project' do |dir, gpg_keysdir=nil|
+  shared_context 'a freshly-scaffolded test project' do |dir, opts = {}|
     opts = {}
     test__dir    = "#{build_user_homedir}/test-#{dir}"
     rpms__dir    = "#{test__dir}/test.rpms"
     src__rpm     =  "#{build_user_host_files}/spec/lib/simp/files/testpackage-1-0.noarch.rpm"
     host__dirs   = {}
-    gpg__keysdir = gpg_keysdir ? gpg_keysdir : "#{test__dir}/.dev_gpgkeys"
-    extra__env   = gpg_keysdir ? "SIMP_PKG_build_keys_dir=#{gpg__keysdir}" : ''
+    gpg__keysdir = opts[:gpg_keysdir] ? opts[:gpg_keysdir] : "#{test__dir}/.dev_gpgkeys"
+    extra__env   = opts[:gpg_keysdir] ? "SIMP_PKG_build_keys_dir=#{gpg__keysdir}" : ''
+    digest__algo  = opts[:digest_algo] ? opts[:digest_algo] : nil
 
 
     hosts.each do |host|
@@ -60,6 +61,8 @@ describe 'rake pkg:signrpms' do
     let(:dirs) { host__dirs }
     let(:dev_keydir) { "#{gpg__keysdir}/dev" }
     let(:extra_env) { extra__env }
+    let(:digest_algo_param) { digest__algo }
+    let(:digest_algo_result) { digest__algo ? digest_algo.upcase : 'SHA256'  }
   end
 
   let(:rpm_unsigned_regex) do
@@ -67,7 +70,7 @@ describe 'rake pkg:signrpms' do
   end
 
   let(:rpm_signed_regex) do
-    %r{^Signature\s+:\s+.*,\s*Key ID (?<key_id>[0-9a-f]+)$}
+    %r{^Signature\s+:\s+\w+/(?<digest_algo>.*?),.*,\s*Key ID (?<key_id>[0-9a-f]+)$}
   end
 
   let(:expired_keydir) do
@@ -79,7 +82,8 @@ describe 'rake pkg:signrpms' do
 
   shared_examples 'it creates a new GPG dev signing key' do
     it 'creates a new GPG dev signing key' do
-      on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}']"), opts)
+      extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
+      on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"), opts)
       hosts.each do |host|
         expect(dev_signing_key_id(host, dev_keydir, opts)).to_not be_empty
         expect(file_exists_on(host,"#{dirs[host][:dvd_dir]}/RPM-GPG-KEY-SIMP-Dev")).to be true
@@ -101,7 +105,8 @@ describe 'rake pkg:signrpms' do
     it 'creates GPG dev signing key and signs packages' do
       hosts.each do |host|
         # NOTE: pkg:signrpms will not actually fail if it can't sign a RPM
-        on(host, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}']"), opts)
+        extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
+        on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"), opts)
 
         expect(file_exists_on(host,"#{dirs[host][:dvd_dir]}/RPM-GPG-KEY-SIMP-Dev")).to be true
 
@@ -109,6 +114,7 @@ describe 'rake pkg:signrpms' do
         expect(result.stdout).to match rpm_signed_regex
         signed_rpm_data = rpm_signed_regex.match(result.stdout)
         expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, dev_keydir, opts)
+        expect(signed_rpm_data[:digest_algo]).to eql digest_algo_result
       end
     end
   end
@@ -119,12 +125,14 @@ describe 'rake pkg:signrpms' do
         existing_key_id = dev_signing_key_id(host, dev_keydir, opts)
 
         # NOTE: pkg:signrpms will not actually fail if it can't sign a RPM
-        on(host, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}']"), opts)
+        extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
+        on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"), opts)
 
         result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
         expect(result.stdout).to match rpm_signed_regex
         signed_rpm_data = rpm_signed_regex.match(result.stdout)
         expect(signed_rpm_data[:key_id]).to eql existing_key_id
+        expect(signed_rpm_data[:digest_algo]).to eql digest_algo_result
       end
     end
   end
@@ -215,7 +223,15 @@ describe 'rake pkg:signrpms' do
   end
 
   describe 'when SIMP_PKG_build_keys_dir is set' do
-    include_context('a freshly-scaffolded test project', 'custom-keys-dir', '/home/build_user/.dev_gpgpkeys')
+    opts = { :gpg_keysdir => '/home/build_user/.dev_gpgpkeys' }
+    include_context('a freshly-scaffolded test project', 'custom-keys-dir', opts)
+    include_examples('it begins with unsigned RPMs')
+    include_examples('it creates GPG dev signing key and signs packages')
+  end
+
+  describe 'when digest algorithm is specified' do
+    opts = { :digest_algo => 'sha384' }
+    include_context('a freshly-scaffolded test project', 'custom-digest-algo', opts)
     include_examples('it begins with unsigned RPMs')
     include_examples('it creates GPG dev signing key and signs packages')
   end
