@@ -8,11 +8,19 @@
   - changelog_annotation: use pkg:create_tag_changelog instead
 - Changed the default location of the GPG keys directory used in the
   pkg:key_prep and pkg:signrpms Rake tasks to <base_dir>/.dev_gpgkeys.
+- Improved pkg:signrpms error handling
 - Added a SIMP_PKG_build_keys_dir environment variable that overrides
   the default location of the GPG keys directory used in the pkg:key_prep
   and pkg:signrpms Rake tasks.
   - Useful when the gpg-agent daemon fails to start because its socket
     path is longer than 108 characters.
+- Added SIMP_PKG_rpmsign_timeout environment variable that overrides
+  default timeout in seconds to wait for an individual RPM signing
+  operation to complete.
+  - Default timeout is 60 seconds.
+  - Most relevant when signing on RPMs on EL8 and the gpg-agent
+    started by rpmsign fails to start, but rpmsign does not detect
+    the failure and hangs.
 
 ### 5.11.6 / 2021-02-03
 * Fix GPG handling for GPG 2.1+

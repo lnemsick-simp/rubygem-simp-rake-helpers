@@ -265,10 +265,12 @@ describe 'rake pkg:signrpms' do
       on(hosts, "sed -i -e \"s/^Passphrase: /Passphrase: OOPS/\" #{key_gen_file}")
     end
 
+    include_examples('it begins with unsigned RPMs')
+
     it 'should fail to sign any rpms' do
-      on(host,
+      on(hosts,
         %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
-        :acceptable_exit_codes => [1]
+        {:acceptable_exit_codes => [1]}.merge(run_opts)
      )
     end
   end
