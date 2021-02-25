@@ -21,6 +21,13 @@ module Simp::Rake::Build
       @rpm_build_metadata = 'last_rpm_build_metadata.yaml'
       @rpm_dependency_file = File.join(@base_dir, 'build', 'rpm', 'dependencies.yaml')
       @build_keys_dir = ENV.fetch('SIMP_PKG_build_keys_dir', File.join(@base_dir, '.dev_gpgkeys'))
+      @long_gpg_socket_err_msg = <<~EOM
+        If the problem is 'socket name <xxx> is too long', use SIMP_PKG_build_keys_dir
+        to override
+        #{@build_keys_dir}
+        with a shorter path. The socket name must be < 108 characters.
+
+      EOM
 
       define_tasks
     end
@@ -148,7 +155,11 @@ module Simp::Rake::Build
             if key == 'dev'
               require 'simp/local_gpg_signing_key'
 
-              Simp::LocalGpgSigningKey.new(key_dir,{verbose: @verbose}).ensure_key
+              begin
+                Simp::LocalGpgSigningKey.new(key_dir,{verbose: @verbose}).ensure_key
+              rescue Exception => e
+                raise("#{e.message}\n\n#{@long_gpg_socket_err_msg}")
+              end
             else
               unless File.directory?(key_dir)
                 fail("Could not find GPG keydir '#{key_dir}' in '#{Dir.pwd}'")
@@ -406,15 +417,7 @@ module Simp::Rake::Build
               opts
            )
          rescue Exception => e
-           err_msg = [
-             e.message,
-             '',
-             "If the problem is 'socket name <xxx> is too long', use SIMP_PKG_build_keys_dir",
-             'to override',
-             @build_keys_dir,
-             'with a shorter path. The socket name must be < 108 characters.'
-           ].join("\n")
-           raise(err_msg)
+           raise("#{e.message}\n\n#{@long_gpg_socket_err_msg}")
          end
 
         end

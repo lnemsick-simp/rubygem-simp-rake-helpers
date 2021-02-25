@@ -68,4 +68,14 @@ module Simp::BeakerHelpers::SimpRakeHelpers::BuildProjectHelpers
     raise "No 'SIMP Development' GPG keys found in '#{key_dir}'" if pub_lines.empty?
     pub_lines.first.split(':')[4].downcase
   end
+
+  # Returns true when a gpg-agent daemon using the specified GPG home directory
+  # (aka key directory) is running.
+  #
+  # @param [Host, String, Symbol] host Beaker host
+  # @param [String] gpg_homedir Absolute path to GPG home dir
+  def gpg_agent_running?(host, gpg_homedir)
+    result = on(host, "pgrep -c -f 'gpg-agent.*homedir.*#{gpg_homedir}'", :accept_all_exit_codes => true)
+    result.stdout.strip != '0'
+  end
 end

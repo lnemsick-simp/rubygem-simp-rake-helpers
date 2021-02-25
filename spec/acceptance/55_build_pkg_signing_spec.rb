@@ -9,10 +9,12 @@ RSpec.configure do |c|
   c.extend  Simp::BeakerHelpers::SimpRakeHelpers::BuildProjectHelpers
 end
 
+def run_opts
+  { run_in_parallel: true, environment: { 'SIMP_PKG_verbose' => 'yes' } }
+end
+
 describe 'rake pkg:signrpms' do
-  def opts
-    { run_in_parallel: true, environment: { 'SIMP_PKG_verbose' => 'yes' } }
-  end
+  # options to be applied to each on() operation
 
   # Clean out RPMs dir and copy in a fresh dummy RPM
   def prep_rpms_dir(rpms_dir, src_rpms, opts = {})
@@ -22,18 +24,17 @@ describe 'rake pkg:signrpms' do
 
   # Provides a scaffolded test project and `let` variables
   shared_context 'a freshly-scaffolded test project' do |dir, opts = {}|
-    opts = {}
-    test__dir    = "#{build_user_homedir}/test-#{dir}"
-    rpms__dir    = "#{test__dir}/test.rpms"
-    src__rpm     =  "#{build_user_host_files}/spec/lib/simp/files/testpackage-1-0.noarch.rpm"
-    host__dirs   = {}
-    gpg__keysdir = opts[:gpg_keysdir] ? opts[:gpg_keysdir] : "#{test__dir}/.dev_gpgkeys"
-    extra__env   = opts[:gpg_keysdir] ? "SIMP_PKG_build_keys_dir=#{gpg__keysdir}" : ''
+    test__dir     = "#{build_user_homedir}/test-#{dir}"
+    rpms__dir     = "#{test__dir}/test.rpms"
+    src__rpm      =  "#{build_user_host_files}/spec/lib/simp/files/testpackage-1-0.noarch.rpm"
+    host__dirs    = {}
+    gpg__keysdir  = opts[:gpg_keysdir] ? opts[:gpg_keysdir] : "#{test__dir}/.dev_gpgkeys"
+    extra__env    = opts[:gpg_keysdir] ? "SIMP_PKG_build_keys_dir=#{gpg__keysdir}" : ''
     digest__algo  = opts[:digest_algo] ? opts[:digest_algo] : nil
 
 
     hosts.each do |host|
-      dist_dir = distribution_dir(host, test__dir, opts)
+      dist_dir = distribution_dir(host, test__dir, run_opts)
       host__dirs[host] = {
         test_dir:  test__dir,
         dvd_dir: "#{dist_dir}/DVD"
@@ -43,14 +44,14 @@ describe 'rake pkg:signrpms' do
 
     before(:all) do
       # Scaffold a project skeleton
-      scaffold_build_project(hosts, test__dir, opts)
+      scaffold_build_project(hosts, test__dir, run_opts)
 
-      # Provide an RPM directory to process and a dummy RPM to sign
-      on(hosts, %(#{run_cmd} "mkdir '#{rpms__dir}'"))
+      # Provide an RPM directory to process
+      on(hosts, %(#{run_cmd} "mkdir '#{rpms__dir}'"), run_opts)
 
       # Ensure a DVD directory exists that is appropriate to each SUT
       hosts.each do |host|
-        on(host, %(#{run_cmd} "mkdir -p '#{host__dirs[host][:dvd_dir]}'"), opts)
+        on(host, %(#{run_cmd} "mkdir -p '#{host__dirs[host][:dvd_dir]}'"), run_opts)
       end
     end
 
@@ -62,7 +63,11 @@ describe 'rake pkg:signrpms' do
     let(:dev_keydir) { "#{gpg__keysdir}/dev" }
     let(:extra_env) { extra__env }
     let(:digest_algo_param) { digest__algo }
-    let(:digest_algo_result) { digest__algo ? digest_algo.upcase : 'SHA256'  }
+    let(:digest_algo_result) { digest__algo ? digest__algo.upcase : 'SHA256'  }
+    let(:signrpm_cmd) {
+      extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
+      "#{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"
+    }
   end
 
   let(:rpm_unsigned_regex) do
@@ -82,19 +87,24 @@ describe 'rake pkg:signrpms' do
 
   shared_examples 'it creates a new GPG dev signing key' do
     it 'creates a new GPG dev signing key' do
-      extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
-      on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"), opts)
+      on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{signrpm_cmd}"), run_opts)
       hosts.each do |host|
-        expect(dev_signing_key_id(host, dev_keydir, opts)).to_not be_empty
+        expect(dev_signing_key_id(host, dev_keydir, run_opts)).to_not be_empty
         expect(file_exists_on(host,"#{dirs[host][:dvd_dir]}/RPM-GPG-KEY-SIMP-Dev")).to be true
+      end
+    end
+
+    it 'does not leave the gpg-agent daemon running' do
+      hosts.each do |host|
+        expect(gpg_agent_running?(host, dev_keydir)).to be false
       end
     end
   end
 
   shared_examples 'it begins with unsigned RPMs' do
     it 'begins with unsigned RPMs' do
-      prep_rpms_dir(rpms_dir, [src_rpm], opts)
-      rpms_before_signing = on(hosts, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
+      prep_rpms_dir(rpms_dir, [src_rpm], run_opts)
+      rpms_before_signing = on(hosts, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
       rpms_before_signing.each do |result|
         expect(result.stdout).to match rpm_unsigned_regex
       end
@@ -105,16 +115,21 @@ describe 'rake pkg:signrpms' do
     it 'creates GPG dev signing key and signs packages' do
       hosts.each do |host|
         # NOTE: pkg:signrpms will not actually fail if it can't sign a RPM
-        extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
-        on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"), opts)
+        on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{signrpm_cmd}"), run_opts)
 
         expect(file_exists_on(host,"#{dirs[host][:dvd_dir]}/RPM-GPG-KEY-SIMP-Dev")).to be true
 
-        result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
+        result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
         expect(result.stdout).to match rpm_signed_regex
         signed_rpm_data = rpm_signed_regex.match(result.stdout)
-        expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, dev_keydir, opts)
+        expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, dev_keydir, run_opts)
         expect(signed_rpm_data[:digest_algo]).to eql digest_algo_result
+      end
+    end
+
+    it 'does not leave the gpg-agent daemon running' do
+      hosts.each do |host|
+        expect(gpg_agent_running?(host, dev_keydir)).to be false
       end
     end
   end
@@ -122,23 +137,29 @@ describe 'rake pkg:signrpms' do
   shared_examples 'it signs RPM packages using existing GPG dev signing key' do
     it 'signs RPM packages using existing GPG dev signing key' do
       hosts.each do |host|
-        existing_key_id = dev_signing_key_id(host, dev_keydir, opts)
+        existing_key_id = dev_signing_key_id(host, dev_keydir, run_opts)
 
         # NOTE: pkg:signrpms will not actually fail if it can't sign a RPM
-        extra_args = digest_algo_param ? ",false,#{digest_algo_param}" : ''
-        on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{extra_env} bundle exec rake pkg:signrpms[dev,'#{rpms_dir}'#{extra_args}]"), opts)
+        on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{signrpm_cmd}"), run_opts)
 
-        result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
+        result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
         expect(result.stdout).to match rpm_signed_regex
         signed_rpm_data = rpm_signed_regex.match(result.stdout)
         expect(signed_rpm_data[:key_id]).to eql existing_key_id
         expect(signed_rpm_data[:digest_algo]).to eql digest_algo_result
       end
     end
+
+    it 'does not leave the gpg-agent daemon running' do
+      hosts.each do |host|
+        expect(gpg_agent_running?(host, dev_keydir)).to be false
+      end
+    end
   end
 
   describe 'when starting without a dev key and no RPMs to sign' do
     include_context('a freshly-scaffolded test project', 'create-key')
+
     include_examples('it creates a new GPG dev signing key')
   end
 
@@ -157,15 +178,15 @@ describe 'rake pkg:signrpms' do
     include_context('a freshly-scaffolded test project', 'signrpms-expired')
 
     it 'begins with an expired GPG signing key' do
-      prep_rpms_dir(rpms_dir, [src_rpm], opts)
+      prep_rpms_dir(rpms_dir, [src_rpm], run_opts)
       hosts.each do |host|
         copy_expired_keydir_to_dev_cmds = [
           "mkdir -p '$(dirname '#{dev_keydir}')'",
           "cp -aT '#{expired_keydir}' '#{dev_keydir}'",
           "ls -lart '#{expired_keydir}'"
         ].join(' && ')
-        on(host, %(#{run_cmd} "#{copy_expired_keydir_to_dev_cmds}"), opts)
-        result = on(host, %(#{run_cmd} "gpg --list-keys --homedir='#{dev_keydir}'"), opts)
+        on(host, %(#{run_cmd} "#{copy_expired_keydir_to_dev_cmds}"), run_opts)
+        result = on(host, %(#{run_cmd} "gpg --list-keys --homedir='#{dev_keydir}'"), run_opts)
         expect(result.stdout).to match(/expired: 2018-04-06/)
       end
     end
@@ -192,14 +213,14 @@ describe 'rake pkg:signrpms' do
       it 'creates new GPG signing key but does not resign RPMs' do
         hosts.each do |host|
           # force defaults to false
-          on(host, %(#{run_cmd} "cd '#{test_dir}'; bundle exec rake pkg:signrpms[dev,'#{rpms_dir}']"), opts)
+          on(host, %(#{run_cmd} "cd '#{test_dir}'; bundle exec rake pkg:signrpms[dev,'#{rpms_dir}']"), run_opts)
 
-          result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
+          result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
           expect(result.stdout).to match rpm_signed_regex
           signed_rpm_data = rpm_signed_regex.match(result.stdout)
 
           # verify RPMs no signed with the new signing key
-          expect(signed_rpm_data[:key_id]).to_not eql dev_signing_key_id(host, dev_keydir, opts)
+          expect(signed_rpm_data[:key_id]).to_not eql dev_signing_key_id(host, dev_keydir, run_opts)
         end
       end
     end
@@ -211,12 +232,12 @@ describe 'rake pkg:signrpms' do
 
       it 'creates new GPG signing key and resigns RPMs' do
         hosts.each do |host|
-          on(host, %(#{run_cmd} "cd '#{test_dir}'; bundle exec rake pkg:signrpms[dev,'#{rpms_dir}',true]"), opts)
+          on(host, %(#{run_cmd} "cd '#{test_dir}'; bundle exec rake pkg:signrpms[dev,'#{rpms_dir}',true]"), run_opts)
 
-          result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), opts)
+          result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
           expect(result.stdout).to match rpm_signed_regex
           signed_rpm_data = rpm_signed_regex.match(result.stdout)
-          expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, dev_keydir, opts)
+          expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, dev_keydir, run_opts)
         end
       end
     end
@@ -234,5 +255,45 @@ describe 'rake pkg:signrpms' do
     include_context('a freshly-scaffolded test project', 'custom-digest-algo', opts)
     include_examples('it begins with unsigned RPMs')
     include_examples('it creates GPG dev signing key and signs packages')
+  end
+
+  hosts.each do |host|
+    os_major =  fact_on(host,'operatingsystemmajrelease')
+    if os_major > '7'
+      # this problem only happend on EL > 7 in a docker container
+      describe "when gpg-agent's socket path is too long on #{host}" do
+        opts = { :gpg_keysdir => '/home/build_user/this/results/in/a/gpg_agent/socket/path/that/is/longer/than/one/hundred/eight/characters' }
+        include_context('a freshly-scaffolded test project', 'long-socket-path', opts)
+
+        context 'when the gpg key needs to be created ' do
+          it 'should fail to sign any rpms' do
+            on(host,
+               %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+              :acceptable_exit_codes => [1]
+            )
+          end
+        end
+
+        context 'when the gpg key already exists' do
+          # This would be when a GPG key dir was populated with keys generated elsewhere.
+          # Reuse the keys from an earlier test.
+          it 'should copy existing key files into the gpg key dir' do
+            source_dir = '/home/build_user/test-create-key/.dev_gpgkeys/dev'
+            on(host, %(#{run_cmd} "cp -r #{source_dir}/* #{dev_keydir}"))
+          end
+
+          include_examples('it begins with unsigned RPMs')
+
+          it 'should fail to sign any rpms' do
+            skip('rpm --resign hangs instead of failing when gpg-agent fails to start')
+
+            on(host,
+              %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+              :acceptable_exit_codes => [1]
+            )
+          end
+        end
+      end
+    end
   end
 end
