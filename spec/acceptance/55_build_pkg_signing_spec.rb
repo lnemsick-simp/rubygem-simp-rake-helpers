@@ -267,11 +267,21 @@ describe 'rake pkg:signrpms' do
 
     include_examples('it begins with unsigned RPMs')
 
-    it 'should fail to sign any rpms' do
-      on(hosts,
+    it 'should fail to sign any rpms and notify user of each failure' do
+      results = on(hosts,
         %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
-        {:acceptable_exit_codes => [1]}.merge(run_opts)
-     )
+       :acceptable_exit_codes => [1]
+      )
+
+      results.each do |result|
+        err_msg = %r(Error occurred while attempting to sign #{test_rpm}, skipping)
+        expect(result.stderr).to match(err_msg)
+      end
+
+      signature_checks = on(hosts, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
+      signature_checks.each do |result|
+        expect(result.stdout).to match rpm_unsigned_regex
+      end
     end
   end
 
@@ -302,15 +312,23 @@ describe 'rake pkg:signrpms' do
 
           include_examples('it begins with unsigned RPMs')
 
-          it 'should fail to sign any rpms' do
+          it 'should fail to sign any rpms and notify user of each failure' do
             # For rpm-sign-4.14.2-11.el8_0, 'rpm --resign' hangs instead of failing
             # when gpg-agent fails to start.
             # Set the default smaller than the 30 second default, so that we don't
             # wait so long for the failure.
-            on(host,
+            results = on(host,
               %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_rpmsign_timeout=5 SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
               :acceptable_exit_codes => [1]
             )
+
+            results.each do |result|
+              err_msg = %r(Failed to sign #{test_rpm} in 5 seconds, skipping)
+              expect(result.stderr).to match(err_msg)
+            end
+
+            signature_check = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
+            expect(signature_check.stdout).to match rpm_unsigned_regex
           end
         end
       end

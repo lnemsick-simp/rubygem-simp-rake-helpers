@@ -209,7 +209,7 @@ class Simp::RpmSigner
         end
 
         if status && !status.success?
-          raise "Failure running #{signcommand}"
+          raise "Failure running <#{signcommand}>"
         end
       end
 
@@ -218,7 +218,7 @@ class Simp::RpmSigner
     rescue Timeout::Error
       $stderr.puts "Failed to sign #{rpm} in #{timeout_seconds} seconds, skipping."
     rescue Exception => e
-      $stderr.puts "Error occurred while attempting to sign #{rpm}, skipping."
+      $stderr.puts "Error occurred while attempting to sign #{rpm}, skipping:"
       $stderr.puts e
     end
 
@@ -246,8 +246,9 @@ class Simp::RpmSigner
   # @options options :verbose            Whether to log debug information.
   #
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg'
-  #   executable cannot be found, the GPG key directory does not exist or
-  #   the GPG key metadata cannot be determined via 'gpg'
+  #   executable cannot be found, the GPG key directory does not exist,
+  #   the GPG key metadata cannot be determined via 'gpg' or all RPM signing
+  #   operations failed
   #
   #   **All other RPM signing errors are logged and ignored.**
   #
@@ -273,21 +274,44 @@ class Simp::RpmSigner
 
     return if to_sign.empty?
 
+    results = nil
     begin
-      Parallel.map(
+      results = Parallel.map(
         to_sign,
         :in_processes => opts[:max_concurrent],
         :progress => opts[:progress_bar_title]
       ) do |rpm|
-
+        _result = nil
         if opts[:force] || !Simp::RPM.new(rpm).signature
-          sign_rpm(rpm, gpg_keydir, opts)
+          _result = [ rpm, sign_rpm(rpm, gpg_keydir, opts)]
         else
           puts "Skipping signed package #{rpm}" if opts[:verbose]
+          _result = [ rpm, :skipped_already_signed ]
         end
+
+        _result
       end
     ensure
       kill_gpg_agent(gpg_keydir)
+    end
+
+    if results
+      results = results.to_h
+      successes = results.select { |rpm,status| status == true }
+      failures = results.select { |rpm,status| status == false }
+      already_signed = results.select { |rpm,status| status == :skipped_already_signed }
+
+      if opts[:verbose]
+        puts 'Summary'
+        puts '======='
+        puts "# RPMs already signed:      #{already_signed.size}" unless already_signed.empty?
+        puts "# RPMs successfully signed: #{successes.size}"
+        puts "# RPM signing failures:     #{failures.size}"
+      end
+
+      if !failures.empty? && ((to_sign.size - already_signed.size) == (failures.size))
+        raise("All RPMs failed to be signed in #{rpm_dir}")
+      end
     end
   end
 
