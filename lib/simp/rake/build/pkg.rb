@@ -389,8 +389,11 @@ module Simp::Rake::Build
                 * Defaults to 'sha256'
 
           ENV vars:
-            - Set `SIMP_RPM_verbose=yes` to report RPM operations as they happen.
-            - Set `SIMP_PKG_build_keys_dir` to override the default build keys path.
+            * Set `SIMP_RPM_verbose=yes` to report RPM operations as they happen.
+            * Set `SIMP_PKG_build_keys_dir` to override the default build keys path.
+            * Set `SIMP_PKG_rpmsign_timeout` to override the maximum time in seconds
+              to wait for an individual RPM signing operation to complete.
+              - Defaults to 30 seconds.
         EOM
         task :signrpms,[:key,:rpm_dir,:force,:digest_algo] => [:prep,:key_prep] do |t,args|
           require 'simp/rpm_signer'
@@ -401,12 +404,14 @@ module Simp::Rake::Build
           args.with_defaults(:digest_algo => 'sha256')
 
           force = (args[:force].to_s == 'false' ? false : true)
+          timeout = ENV['SIMP_PKG_rpmsign_timeout'] ? ENV['SIMP_PKG_rpmsign_timeout'].to_i : 30
 
           opts = {
-            :force              => force,
             :digest_algo        => args[:digest_algo],
-            :progress_bar_title => t.name,
+            :force              => force,
             :max_concurrent     => @cpu_limit,
+            :progress_bar_title => t.name,
+            :timeout_seconds    => timeout,
             :verbose            => @verbose
           }
 

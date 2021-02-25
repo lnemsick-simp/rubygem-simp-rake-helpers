@@ -159,7 +159,6 @@ describe 'rake pkg:signrpms' do
 
   describe 'when starting without a dev key and no RPMs to sign' do
     include_context('a freshly-scaffolded test project', 'create-key')
-
     include_examples('it creates a new GPG dev signing key')
   end
 
@@ -257,6 +256,23 @@ describe 'rake pkg:signrpms' do
     include_examples('it creates GPG dev signing key and signs packages')
   end
 
+  describe 'when wrong keyword password is specified' do
+    include_context('a freshly-scaffolded test project', 'wrong-password')
+    include_examples('it creates a new GPG dev signing key')
+
+    it 'should corrupt the password of new key' do
+      key_gen_file = File.join(dev_keydir, 'gengpgkey')
+      on(hosts, "sed -i -e \"s/^Passphrase: /Passphrase: OOPS/\" #{key_gen_file}")
+    end
+
+    it 'should fail to sign any rpms' do
+      on(host,
+        %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+        :acceptable_exit_codes => [1]
+     )
+    end
+  end
+
   hosts.each do |host|
     os_major =  fact_on(host,'operatingsystemmajrelease')
     if os_major > '7'
@@ -285,10 +301,12 @@ describe 'rake pkg:signrpms' do
           include_examples('it begins with unsigned RPMs')
 
           it 'should fail to sign any rpms' do
-            skip('rpm --resign hangs instead of failing when gpg-agent fails to start')
-
+            # For rpm-sign-4.14.2-11.el8_0, 'rpm --resign' hangs instead of failing
+            # when gpg-agent fails to start.
+            # Set the default smaller than the 30 second default, so that we don't
+            # wait so long for the failure.
             on(host,
-              %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+              %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_rpmsign_timeout=5 SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
               :acceptable_exit_codes => [1]
             )
           end

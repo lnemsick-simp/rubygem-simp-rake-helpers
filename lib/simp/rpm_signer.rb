@@ -132,18 +132,28 @@ class Simp::RpmSigner
   #
   # @param rpm          Fully qualified path to an RPM to be signed.
   # @param gpg_keydir   The full path of the directory where the key resides.
-  # @param digest_algo  Digest algorithm to use when signing RPM.
-  # @param verbose      Whether to log debug information.
+  # @param options      Options Hash
   #
+  # @options options :digest_algo      Digest algorithm to use in RPM
+  #                                    signing operation
+  # @options options :timeout_seconds  Timeout in seconds for an individual
+  #                                    RPM signing operation
+  # @options options :verbose          Whether to log debug information.
+  #
+  # @return Whether package signing operation succeeded
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg
   #   'executable cannot be found, the GPG key directory does not exist or
   #   the GPG key metadata cannot be determined via 'gpg'
-  def self.sign_rpm(rpm, gpg_keydir, digest_algo = 'sha256', verbose = false)
+  def self.sign_rpm(rpm, gpg_keydir, options={})
     # This may be a little confusing...Although we're using 'rpm --resign'
     # in lieu of 'rpmsign --addsign', they are equivalent and the presence
     # of 'rpmsign' is a legitimate check that the 'rpm --resign' capability
     # is available (i.e., rpm-sign package has been installed).
     which('rpmsign') || raise("ERROR: Cannot sign RPMs without 'rpmsign'.")
+
+    digest_algo = options.key?(:digest_algo) ?  options[:digest_algo] : 'sha256'
+    timeout_seconds = options.key?(:timeout_seconds) ?  options[:timeout_seconds] : 30
+    verbose = options.key?(:verbose) ?  options[:verbose] : false
 
     gpgkey = load_key(gpg_keydir, verbose)
 
@@ -163,36 +173,56 @@ class Simp::RpmSigner
       "--resign #{rpm}"
     ].compact.join(' ')
 
+    success = false
     begin
       if verbose
         puts "Signing #{rpm} with #{gpgkey[:name]} from #{gpgkey[:dir]}:\n  #{signcommand}"
       end
-      PTY.spawn(signcommand) do |read, write, pid|
-        begin
-          while !read.eof? do
-            # rpm version >= 4.13.0 will stand up a gpg-agent and so the prompt
-            # for the passphrase will only actually happen if this is the first
-            # RPM to be signed with the key after the gpg-agent is started and the
-            # key's passphrase has not been cleared from the agent's cache.
-            read.expect(/pass\s?phrase:.*/) do |text|
-              write.puts(gpgkey[:password])
-              write.flush
+
+      require 'timeout'
+      # With rpm-sign-4.14.2-11.el8_0 (EL 8.0), if rpm cannot start the
+      # gpg-agent daemon, it will just hang. We need to be able to detect
+      # the problem and report the failure.
+      Timeout::timeout(timeout_seconds) do
+
+        status = nil
+        PTY.spawn(signcommand) do |read, write, pid|
+          begin
+            while !read.eof? do
+              # rpm version >= 4.13.0 will stand up a gpg-agent and so the prompt
+              # for the passphrase will only actually happen if this is the first
+              # RPM to be signed with the key after the gpg-agent is started and the
+              # key's passphrase has not been cleared from the agent's cache.
+              read.expect(/pass\s?phrase:.*/) do |text|
+                write.puts(gpgkey[:password])
+                write.flush
+              end
             end
+          rescue Errno::EIO
+            # Will get here once input is no longer needed, which can be
+            # immediately, if a gpg-agent is already running and the
+            # passphrase for the key is loaded in its cache.
           end
-        rescue Errno::EIO
-          # Will get here once input is no longer needed, which can be
-          # immediately, if a gpg-agent is already running and the
-          # passphrase for the key is loaded in its cache.
+
+          Process.wait(pid)
+          status = $?
         end
 
-        Process.wait(pid)
+        if status && !status.success?
+          raise "Failure running #{signcommand}"
+        end
       end
 
-      raise "Failure running #{signcommand}" unless $?.success?
+      puts "Successfully signed #{rpm}" if verbose
+      success = true
+    rescue Timeout::Error
+      $stderr.puts "Failed to sign #{rpm} in #{timeout_seconds} seconds, skipping."
     rescue Exception => e
       $stderr.puts "Error occurred while attempting to sign #{rpm}, skipping."
       $stderr.puts e
     end
+
+    success
   end
 
   # Signs any RPMs found within the entire rpm_dir directory tree with
@@ -203,12 +233,16 @@ class Simp::RpmSigner
   # @param gpg_keydir The full path of the directory where the key resides
   # @param options    Options Hash
   #
+  # @options options :digest_algo        Digest algorithm to use in RPM
+  #                                      signing operation
   # @options options :force              Force RPMs that are already signed
   #                                      to be resigned.
-  # @options options :progress_bar_title Title for the progress bar logged to
-  #                                      the console during the signing process.
   # @options options :max_concurrent     Maximum number of concurrent RPM
   #                                      signing operations.
+  # @options options :progress_bar_title Title for the progress bar logged to
+  #                                      the console during the signing process.
+  # @options options :timeout_seconds    Timeout in seconds for an individual
+  #                                      RPM signing operation
   # @options options :verbose            Whether to log debug information.
   #
   # @raise RuntimeError if 'rpmsign' executable cannot be found, the 'gpg'
@@ -219,10 +253,11 @@ class Simp::RpmSigner
   #
   def self.sign_rpms(rpm_dir, gpg_keydir, options = {})
    opts = {
-     :force              => false,
      :digest_algo        => 'sha256',
-     :progress_bar_title => 'sign_rpms',
+     :force              => false,
      :max_concurrent     => 1,
+     :progress_bar_title => 'sign_rpms',
+     :timeout_seconds    => 30,
      :verbose            => false
     }.merge(options)
 
@@ -236,6 +271,8 @@ class Simp::RpmSigner
       end
     end
 
+    return if to_sign.empty?
+
     begin
       Parallel.map(
         to_sign,
@@ -244,7 +281,7 @@ class Simp::RpmSigner
       ) do |rpm|
 
         if opts[:force] || !Simp::RPM.new(rpm).signature
-          sign_rpm(rpm, gpg_keydir, opts[:digest_algo], opts[:verbose])
+          sign_rpm(rpm, gpg_keydir, opts)
         else
           puts "Skipping signed package #{rpm}" if opts[:verbose]
         end
