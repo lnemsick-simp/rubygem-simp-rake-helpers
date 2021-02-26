@@ -47,10 +47,11 @@ module Simp
   #   created to generate it, and destroyed after this is done.  The daemon does
   #   not interact with any other `gpg-agent` daemons on the system. It is
   #   launched on random socket(s) whose socket file(s) can be found as follows:
-  #   * when building in a Docker container for EL8: #{key_name/} directory
-  #   * when building outside of a Docker container for EL8: a temporary
-  #     directory in /run/user/<uid>/gnupg
-  #   * when building for El7: a temporary directory in /tmp (EL7)
+  #
+  #   Location                           Environment
+  #   #{key_name/} dir                   Docker container for EL8
+  #   temp dir in /run/user/<uid>/gnupg  EL8
+  #   temp dir in /tmp                   EL7
   #
   class LocalGpgSigningKey
     include FileUtils

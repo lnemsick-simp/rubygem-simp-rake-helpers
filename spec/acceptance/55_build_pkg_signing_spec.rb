@@ -252,7 +252,7 @@ describe 'rake pkg:signrpms' do
     include_examples('it creates GPG dev signing key and signs packages')
   end
 
-  describe 'when rpm signing fails' do
+  describe 'when some rpm signing fails' do
     include_context('a freshly-scaffolded test project', 'signing-failure')
     include_examples('it begins with unsigned RPMs')
 
