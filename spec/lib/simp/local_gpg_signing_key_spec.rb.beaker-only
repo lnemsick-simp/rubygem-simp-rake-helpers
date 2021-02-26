@@ -72,10 +72,6 @@ describe Simp::LocalGpgSigningKey do
   end
 
   shared_examples_for 'it encountered an unexpired local gpg signing key' do
-    let(:key_id) {
-       key_info = `gpg --with-colons --homedir=#{gpg_keydir} --list-keys '<#{gpg_email_name}>' | grep ^pub:`
-    }
-
     it 'reuses an unexpired local gpg signing key' do
       expect{described_class.new(gpg_keydir,opts).ensure_key}.to output(
         /^GPG key \(gatekeeper@simp\.development\.key\) will expire in 14 days\./

@@ -202,6 +202,7 @@ describe 'rake pkg:signrpms' do
 
     context 'when force is disabled' do
       before :each do
+        # remove the initial signing key
         on(hosts, %(#{run_cmd} 'rm -rf #{keysdir}'))
       end
 
@@ -214,7 +215,7 @@ describe 'rake pkg:signrpms' do
           expect(result.stdout).to match rpm_signed_regex
           signed_rpm_data = rpm_signed_regex.match(result.stdout)
 
-          # verify RPMs no signed with the new signing key
+          # verify RPM is not signed with the new signing key
           expect(signed_rpm_data[:key_id]).to_not eql dev_signing_key_id(host, dev_keydir, run_opts)
         end
       end
@@ -222,6 +223,7 @@ describe 'rake pkg:signrpms' do
 
     context 'when force is enabled' do
       before :each do
+        # remove the initial signing key
         on(hosts, %(#{run_cmd} 'rm -rf #{keysdir}'))
       end
 
@@ -232,6 +234,8 @@ describe 'rake pkg:signrpms' do
           result = on(host, "rpm -qip '#{test_rpm}' | grep ^Signature", run_opts)
           expect(result.stdout).to match rpm_signed_regex
           signed_rpm_data = rpm_signed_regex.match(result.stdout)
+
+          # verify RPM is signed with the new signing key
           expect(signed_rpm_data[:key_id]).to eql dev_signing_key_id(host, dev_keydir, run_opts)
         end
       end
@@ -261,18 +265,16 @@ describe 'rake pkg:signrpms' do
     end
 
     it 'should sign all valid RPMs before failing' do
-      results = on(hosts,
-        %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
-       :acceptable_exit_codes => [1]
-      )
+      hosts.each do |host|
+        result = on(host,
+          %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+         :acceptable_exit_codes => [1]
+        )
 
-      results.each do |result|
         expect(result.stderr).to match('ERROR: Failed to sign some RPMs')
-      end
 
-      signature_checks = on(hosts, "rpm -qip '#{test_rpm}' | grep ^Signature", run_opts)
-      signature_checks.each do |result|
-        expect(result.stdout).to match rpm_signed_regex
+        signature_check = on(host, "rpm -qip '#{test_rpm}' | grep ^Signature", run_opts)
+        expect(signature_check.stdout).to match rpm_signed_regex
       end
     end
   end
@@ -289,19 +291,17 @@ describe 'rake pkg:signrpms' do
     include_examples('it begins with unsigned RPMs')
 
     it 'should fail to sign any rpms and notify user of each failure' do
-      results = on(hosts,
-        %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
-       :acceptable_exit_codes => [1]
-      )
+      hosts.each do |host|
+        result = on(host,
+          %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+         :acceptable_exit_codes => [1]
+        )
 
-      results.each do |result|
         err_msg = %r(Error occurred while attempting to sign #{test_rpm})
         expect(result.stderr).to match(err_msg)
-      end
 
-      signature_checks = on(hosts, "rpm -qip '#{test_rpm}' | grep ^Signature", run_opts)
-      signature_checks.each do |result|
-        expect(result.stdout).to match rpm_unsigned_regex
+        signature_check = on(host, "rpm -qip '#{test_rpm}' | grep ^Signature", run_opts)
+        expect(signature_check.stdout).to match rpm_unsigned_regex
       end
     end
   end
