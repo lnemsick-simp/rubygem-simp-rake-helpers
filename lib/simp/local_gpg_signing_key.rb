@@ -49,7 +49,7 @@ module Simp
   #   launched on random socket(s) whose socket file(s) can be found as follows:
   #
   #   Location                           Environment
-  #   #{key_name/} dir                   Docker container for EL8
+  #   #{key_name} dir                    Docker container for EL8
   #   temp dir in /run/user/<uid>/gnupg  EL8
   #   temp dir in /tmp                   EL7
   #

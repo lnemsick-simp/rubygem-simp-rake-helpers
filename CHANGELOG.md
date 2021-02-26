@@ -1,6 +1,6 @@
 ### 5.12.0 / 2021-02-16
 - Disable brp-mangle-shebangs when building RPMs.
-- Mitigated problem where gpg-agent daemond fails to start because
+- Mitigated problem where gpg-agent daemon fails to start because
   its socket path is longer than 108 characters.
   - Changed the default location of the GPG keys directory used in the
     pkg:key_prep and pkg:signrpms Rake tasks to <base_dir>/.dev_gpgkeys.

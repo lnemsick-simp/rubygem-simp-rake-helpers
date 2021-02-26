@@ -63,7 +63,7 @@ module Simp::BeakerHelpers::SimpRakeHelpers::BuildProjectHelpers
   #
   def dev_signing_key_id(host, key_dir, opts = {})
     # NOTE: This search uses a substring match on 'SIMP Development'.
-    res = on(host, %(#{run_cmd} "gpg --with-colons --fingerprint --homedir='#{key_dir}' 'SIMP Development'"))
+    res = on(host, %(#{run_cmd} "gpg --with-colons --fingerprint --homedir='#{key_dir}' 'SIMP Development'"), opts)
     pub_lines = res.stdout.lines.select { |x| x.start_with?('pub') }
     raise "No 'SIMP Development' GPG keys found in '#{key_dir}'" if pub_lines.empty?
     pub_lines.first.split(':')[4].downcase
