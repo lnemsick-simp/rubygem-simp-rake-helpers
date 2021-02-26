@@ -85,6 +85,14 @@ describe 'rake pkg:signrpms' do
     "#{build_user_host_files}/spec/acceptance/files/build/pkg/gpg-keydir.expired.2018-04-06"
   end
 
+  shared_examples 'it does not leave the gpg-agent daemon running' do
+    it 'does not leave the gpg-agent daemon running' do
+      hosts.each do |host|
+        expect(gpg_agent_running?(host, dev_keydir)).to be false
+      end
+    end
+  end
+
   shared_examples 'it creates a new GPG dev signing key' do
     it 'creates a new GPG dev signing key' do
       on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{signrpm_cmd}"), run_opts)
@@ -94,11 +102,7 @@ describe 'rake pkg:signrpms' do
       end
     end
 
-    it 'does not leave the gpg-agent daemon running' do
-      hosts.each do |host|
-        expect(gpg_agent_running?(host, dev_keydir)).to be false
-      end
-    end
+    include_examples('it does not leave the gpg-agent daemon running')
   end
 
   shared_examples 'it begins with unsigned RPMs' do
@@ -127,11 +131,7 @@ describe 'rake pkg:signrpms' do
       end
     end
 
-    it 'does not leave the gpg-agent daemon running' do
-      hosts.each do |host|
-        expect(gpg_agent_running?(host, dev_keydir)).to be false
-      end
-    end
+    include_examples('it does not leave the gpg-agent daemon running')
   end
 
   shared_examples 'it signs RPM packages using existing GPG dev signing key' do
@@ -139,7 +139,6 @@ describe 'rake pkg:signrpms' do
       hosts.each do |host|
         existing_key_id = dev_signing_key_id(host, dev_keydir, run_opts)
 
-        # NOTE: pkg:signrpms will not actually fail if it can't sign a RPM
         on(hosts, %(#{run_cmd} "cd '#{test_dir}'; #{signrpm_cmd}"), run_opts)
 
         result = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
@@ -150,12 +149,9 @@ describe 'rake pkg:signrpms' do
       end
     end
 
-    it 'does not leave the gpg-agent daemon running' do
-      hosts.each do |host|
-        expect(gpg_agent_running?(host, dev_keydir)).to be false
-      end
-    end
+    include_examples('it does not leave the gpg-agent daemon running')
   end
+
 
   describe 'when starting without a dev key and no RPMs to sign' do
     include_context('a freshly-scaffolded test project', 'create-key')
@@ -261,7 +257,7 @@ describe 'rake pkg:signrpms' do
     include_examples('it begins with unsigned RPMs')
 
     it 'should create a malformed RPM' do
-      on hosts( %(#{run_cmd} "echo 'OOPS' > #{rpms_dir}/oops-test.rpm"))
+      on(hosts, %(#{run_cmd} "echo 'OOPS' > #{rpms_dir}/oops-test.rpm"))
     end
 
     it 'should sign all valid RPMs before failing' do
@@ -313,7 +309,7 @@ describe 'rake pkg:signrpms' do
   hosts.each do |host|
     os_major =  fact_on(host,'operatingsystemmajrelease')
     if os_major > '7'
-      # this problem only happend on EL > 7 in a docker container
+      # this problem only happens on EL > 7 in a docker container
       describe "when gpg-agent's socket path is too long on #{host}" do
         opts = { :gpg_keysdir => '/home/build_user/this/results/in/a/gpg_agent/socket/path/that/is/longer/than/one/hundred/eight/characters' }
         include_context('a freshly-scaffolded test project', 'long-socket-path', opts)
