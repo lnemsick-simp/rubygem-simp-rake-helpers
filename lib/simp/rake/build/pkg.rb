@@ -121,7 +121,7 @@ module Simp::Rake::Build
               (defaults to 'dev')
 
               - The default build keys directory is
-                `#{@base_dir}/.dev_gpgkeys`
+                `#{@build_keys_dir}`
 
 
           When :key is `dev`, a temporary signing key is created, if needed:
@@ -380,7 +380,7 @@ module Simp::Rake::Build
               * :key - The key directory to use under the build keys directory
                 * key defaults to 'dev'
                 * build keys directory defaults to
-                  `#{@base_dir}/.dev_gpgkeys`
+                  `#{@build_keys_dir}`
               * :rpm_dir - A directory containing RPM files to sign. Will recurse!
                 * Defaults to #{File.join(File.dirname(@rpm_dir), '*RPMS')}
               * :force - Force rpms that are already signed to be resigned
