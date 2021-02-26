@@ -402,7 +402,7 @@ module Simp
 
       if version_results[:exit_status] != 0
         raise <<~EOE
-          #{indent('Error getting RPM info:', 2)}
+          #{indent('Error getting RPM info for #{query_source}:', 2)}
           #{indent(version_results[:stderr].strip, 5)}
           #{indent("Run '#{rpm_version_query.gsub("\n",'\\n')} #{query_source}' to recreate the issue.", 2)}
         EOE
@@ -411,7 +411,7 @@ module Simp
       unless signature_results.nil?
         if signature_results[:exit_status] != 0
           raise <<~EOE
-            #{indent('Error getting RPM signature:', 2)}
+            #{indent('Error getting RPM signature for #{query_source}:', 2)}
             #{indent(signature_results[:stderr].strip, 5)}
             #{indent("Run '#{rpm_signature_query.gsub("\n",'\\n')} #{query_source}' to recreate the issue.", 2)}
           EOE

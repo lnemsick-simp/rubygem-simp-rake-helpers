@@ -256,6 +256,31 @@ describe 'rake pkg:signrpms' do
     include_examples('it creates GPG dev signing key and signs packages')
   end
 
+  describe 'when rpm signing fails' do
+    include_context('a freshly-scaffolded test project', 'signing-failure')
+    include_examples('it begins with unsigned RPMs')
+
+    it 'should create a malformed RPM' do
+      on hosts( %(#{run_cmd} "echo 'OOPS' > #{rpms_dir}/oops-test.rpm"))
+    end
+
+    it 'should sign all valid RPMs before failing' do
+      results = on(hosts,
+        %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
+       :acceptable_exit_codes => [1]
+      )
+
+      results.each do |result|
+        expect(result.stderr).to match('ERROR: Failed to sign some RPMs')
+      end
+
+      signature_checks = on(hosts, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
+      signature_checks.each do |result|
+        expect(result.stdout).to match rpm_signed_regex
+      end
+    end
+  end
+
   describe 'when wrong keyword password is specified' do
     include_context('a freshly-scaffolded test project', 'wrong-password')
     include_examples('it creates a new GPG dev signing key')
@@ -274,7 +299,7 @@ describe 'rake pkg:signrpms' do
       )
 
       results.each do |result|
-        err_msg = %r(Error occurred while attempting to sign #{test_rpm}, skipping)
+        err_msg = %r(Error occurred while attempting to sign #{test_rpm})
         expect(result.stderr).to match(err_msg)
       end
 
@@ -317,15 +342,13 @@ describe 'rake pkg:signrpms' do
             # when gpg-agent fails to start.
             # Set the default smaller than the 30 second default, so that we don't
             # wait so long for the failure.
-            results = on(host,
+            result = on(host,
               %(#{run_cmd} "cd '#{test_dir}'; SIMP_PKG_rpmsign_timeout=5 SIMP_PKG_verbose="yes" #{signrpm_cmd}"),
               :acceptable_exit_codes => [1]
             )
 
-            results.each do |result|
-              err_msg = %r(Failed to sign #{test_rpm} in 5 seconds, skipping)
-              expect(result.stderr).to match(err_msg)
-            end
+            err_msg = %r(Failed to sign #{test_rpm} in 5 seconds)
+            expect(result.stderr).to match(err_msg)
 
             signature_check = on(host, %(#{run_cmd} "rpm -qip '#{test_rpm}' | grep ^Signature"), run_opts)
             expect(signature_check.stdout).to match rpm_unsigned_regex

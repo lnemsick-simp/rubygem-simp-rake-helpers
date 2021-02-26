@@ -415,16 +415,43 @@ module Simp::Rake::Build
             :verbose            => @verbose
           }
 
+          results = nil
           begin
-            Simp::RpmSigner.sign_rpms(
+            results = Simp::RpmSigner.sign_rpms(
               args[:rpm_dir],
               File.join(@build_keys_dir, args[:key]),
               opts
-           )
-         rescue Exception => e
-           raise("#{e.message}\n\n#{@long_gpg_socket_err_msg}")
-         end
+            )
+          rescue Exception => e
+            raise("#{e.message}\n\n#{@long_gpg_socket_err_msg}")
+          end
 
+          if results
+            successes = results.select { |rpm,status| status == :signed }
+            failures = results.select { |rpm,status| status == :unsigned }
+            already_signed = results.select { |rpm,status| status == :skipped_already_signed }
+
+            if opts[:verbose]
+              puts
+              puts 'Summary'
+              puts '======='
+              puts "# RPMs already signed:      #{already_signed.size}"
+              puts "# RPMs successfully signed: #{successes.size}"
+              puts "# RPM signing failures:     #{failures.size}"
+              puts
+            end
+
+            if !failures.empty?
+              if ((results.size - already_signed.size) == (failures.size))
+                detail = already_signed.empty? ? '' : 'unsigned '
+                raise("ERROR: Failed to sign all #{detail}RPMs in #{args[:rpm_dir]}")
+              else
+                err_msg = "ERROR: Failed to sign some RPMs in #{args[:rpm_dir]}:\n"
+                err_msg += "  #{failures.keys.join("\n  ")}"
+                raise(err_msg)
+              end
+            end
+          end
         end
 
 =begin
