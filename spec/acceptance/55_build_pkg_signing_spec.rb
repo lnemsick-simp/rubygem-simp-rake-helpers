@@ -10,7 +10,7 @@ RSpec.configure do |c|
 end
 
 def run_opts
-  { run_in_parallel: true }
+  { run_in_parallel: false }
 end
 
 describe 'rake pkg:signrpms' do
